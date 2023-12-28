@@ -190,7 +190,7 @@ java -jar -Dspring.config.location=classpath:file:scheduler_application.properti
 
 ### Проверка установки
 
-1. Для начала работы с Lottabyte необходимо ознакомиться с [инетрукцией по работе с Lottabyte](https://storage.yandexcloud.net/lottabyte-doc/ugLottaByte.1.4.7.pdf).
+1. Для начала работы с Lottabyte необходимо ознакомиться с [инструкцией по работе с Lottabyte](https://storage.yandexcloud.net/lottabyte-doc/ugLottaByte.1.4.7.pdf).
 2. Откройте в браузере сайт front-end  lottabyteui.
 3. Учетные данные:
 - Имя пользователя : admin 
