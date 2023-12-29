@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lottabyte-console-job
+  namespace: 
+spec:
+  template:
+    spec:
+      containers:
+        - name: lottabyte-console-job-container
+          image: "cr.yandex/crpif5tg4kf4mom5kbmh/pgdumpimg:latest"
+          imagePullPolicy: IfNotPresent
+          args:
+            - "/bin/sh"
+            - "-c"
+            - pgDump
+          volumeMounts:
+          - mountPath: /share
+            name: share-volume
+      volumes:
+      - name: share-volume
+        persistentVolumeClaim:
+          claimName: coreapi-share
+
+ 

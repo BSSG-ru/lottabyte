@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-app-config
+  namespace: lotta-test
+
+data:
+  application.properties: |+
+    spring.datasource.url=jdbc:postgresql://cluster1-pgbouncer.pgo:5432/glossaryDB
+    spring.datasource.username=pgbouncer
+    spring.datasource.password=pass
+    spring.datasource.hikari.maxLifetime=600000
+    spring.cache.type=none
+    spring.jackson.serialization-inclusion=non_null
+    spring.jackson.default-property-inclusion=non_null
+
+    lottabyte.api.url=https://localhost
+    lottabyte.api.username=admin
+    lottabyte.api.password=pass
+    lottabyte.api.language=en
+    lottabyte.api.token=UUUUUUU
+
+    org.quartz.threadPool.threadCount = 5
+
+    spring.datasource.hikari.minimum-idle=2
+
+    app.security.jwt.keystore-location=keys/keystore.jks
+    app.security.jwt.keystore-password=pass
+    app.security.jwt.key-alias=jwtsigning
+    app.security.jwt.private-key-passphrase=pass
+    app.jwtExpirationInMs=86400000
+    app.jwtSecret=JWTSuperSecretKey
+
+    server.port=8080
+
+    spring.datasource.test-while-idle=true
+    spring.datasource.validation-query=SELECT 1;
+    spring.datasource.time-between-eviction-runs-millis=60000
+
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lottabyte-scheduler
+  namespace: lotta-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lottabyte-scheduler
+  template:
+    metadata:
+      namespace: lotta-prod
+      labels:
+        app: lottabyte-scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: cr.yandex/crpif5tg4kf4mom5kbmh/scheduler:__VERSION__
+          imagePullPolicy: Always
+          env:
+            - name: TZ
+              value: Europe/Moscow
+          volumeMounts:
+          - mountPath: /config
+            name: config-volume
+          ports:
+          - containerPort:  8080
+            name:  scheduler
+      volumes:
+      - name: config-volume
+        projected:
+          defaultMode: 420
+          sources:
+          - configMap:
+              name: scheduler-app-config
+              optional: true
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lottabyte-scheduler-service
+  namespace: lotta-test
+spec:
+  selector:
+    app: lottabyte-scheduler
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

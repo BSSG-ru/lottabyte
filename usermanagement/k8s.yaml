@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: usermanagement-app-config
+  namespace: lotta-prod
+
+data:
+  application.properties: |+
+    spring.datasource.url=jdbc:postgresql://cluster1-pgbouncer.pgo:5432/prodGlossaryDB
+    spring.datasource.username=pgbouncer
+    spring.datasource.password=pass
+    spring.datasource.hikari.maxLifetime=600000
+    spring.cache.type=none
+    spring.jackson.serialization-inclusion=non_null
+    spring.jackson.default-property-inclusion=non_null
+    
+    spring.datasource.type=org.springframework.jdbc.datasource.SimpleDriverDataSource
+
+    spring.datasource.hikari.minimum-idle=2
+
+    app.security.jwt.keystore-location=keys/keystore.jks
+    app.security.jwt.keystore-password=pass
+    app.security.jwt.key-alias=jwtsigning
+    app.security.jwt.private-key-passphrase=pass
+    app.jwtExpirationInMs=86400000
+    app.jwtSecret=JWTSuperSecretKey
+
+    app.security.cors.origin=http://localhost:3000
+
+    logging.level.org.springframework.security=DEBUG
+
+    spring.ldap.embedded.base-dn=dc=innovativeintelli,dc=com
+    spring.ldap.embedded.ldif=classpath:localldapactivedirectory.ldif
+    spring.ldap.embedded.port=12345
+    spring.ldap.embedded.validation.enabled=false
+
+    springdoc.swagger-ui.path=/usermgmt-doc/
+    springdoc.api-docs.path=/usermgmt-doc/v3/api-docs
+    server.port=8080
+
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lottabyte-usermanagement
+  namespace: lotta-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lottabyte-usermanagement
+  template:
+    metadata:
+      namespace: lotta-prod
+      labels:
+        app: lottabyte-usermanagement
+    spec:
+      containers:
+        - name: usermanagement
+          image: cr.yandex/crpif5tg4kf4mom5kbmh/usermanagement:__VERSION__
+          imagePullPolicy: Always
+          volumeMounts:
+          - mountPath: /config
+            name: config-volume
+          ports:
+          - containerPort:  8080
+            name:  usermanagement
+      volumes:
+      - name: config-volume
+        projected:
+          defaultMode: 420
+          sources:
+          - configMap:
+              name: usermanagement-app-config
+              optional: true
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lottabyte-usermanagement-service
+  namespace: lotta-prod
+spec:
+  selector:
+    app: lottabyte-usermanagement
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

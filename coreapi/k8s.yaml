@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coreapi-app-config
+  namespace: lotta-prod
+
+data:
+  application.properties: |+
+    spring.datasource.url=jdbc:postgresql://cluster1-pgbouncer.pgo:5432/prodGlossaryDB
+    spring.datasource.host=cluster1-pgbouncer.pgo
+    spring.datasource.port=5432
+    spring.datasource.db=prodGlossaryDB
+    kubernetes.image=cr.yandex/crpif5tg4kf4mom5kbmh/pgdumpimg:latest
+    kubernetes.api-version=batch/v1
+    kubernetes.metadata.name=lottabyte-console-job
+    kubernetes.namespace=lotta-prod
+    kubernetes.container.name=lottabyte-console-job-container
+    kubernetes.image-pull-policy=Always
+    kubernetes.volume-mount.name=share-volume
+    kubernetes.volume.name=share-volume
+    kubernetes.persistent-volume-claim-volume-source.claim-name=coreapi-share
+    kubernetes.restart-policy=Never
+    kubernetes.job.kind=Job
+    system.data.storage=share
+    spring.datasource.username=user
+    spring.datasource.password=pass
+    spring.datasource.hikari.maxLifetime=600000
+    spring.cache.type=none
+    spring.jackson.serialization-inclusion=non_null
+    spring.jackson.default-property-inclusion=non_null
+    
+    spring.datasource.hikari.minimum-idle=2
+
+    elasticsearch.protocol=https
+    elasticsearch.host=quickstart-es-http.default
+    elasticsearch.port=9200
+    elasticsearch.connect-timeout=5000
+    elasticsearch.socket-timeout=120000
+    elasticsearch.username=elastic
+    elasticsearch.password=pass
+    spring.main.allow-bean-definition-overriding=true
+
+    app.security.jwt.keystore-location=keys/keystore.jks
+    app.security.jwt.keystore-password=pass
+    app.security.jwt.key-alias=jwtsigning
+    app.security.jwt.private-key-passphrase=pass
+    app.jwtExpirationInMs=86400000
+    app.jwtSecret=JWTSuperSecretKey
+
+    service-endpoint=адрес сервиса S3
+    signing-region=регион
+    secret-key=публичный ключ
+    public-key=приватный ключ
+    bucket=название бакета
+    external_bucket=путь до бакета
+
+    spring.servlet.multipart.max-file-size=100MB
+    spring.servlet.multipart.max-request-size=100MB
+    storage_path=share
+
+    management.endpoint.flowable.enabled=true
+
+    flowable.idm.app.admin.user-id=admin
+    flowable.idm.app.admin.password=pass
+    flowable.idm.app.admin.first-name=admin
+    flowable.idm.app.admin.last-name=admin
+    flowable.common.app.idm-admin.user=admin
+    flowable.common.app.idm-admin.password=pass
+
+    flowable.admin.app.security.encryption.credentials-i-v-spec=pass
+    flowable.admin.app.security.encryption.credentials-secret-spec=pass
+    flowable.database-schema=wf
+
+
+    app.security.cors.origin=http://localhost:3000
+    springdoc.swagger-ui.path=/coreapi-doc/
+    model_json={}
+
+
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lottabyte-coreapi
+  namespace: lotta-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lottabyte-coreapi
+  template:
+    metadata:
+      namespace: lotta-prod
+      labels:
+        app: lottabyte-coreapi
+    spec:
+      containers:
+        - name: coreapi
+          image: cr.yandex/crpif5tg4kf4mom5kbmh/coreapi:__VERSION__
+          imagePullPolicy: Always
+          volumeMounts:
+          - mountPath: /config
+            name: config-volume
+          - mountPath: /share
+            name: share-volume
+          ports:
+          - containerPort:  8080
+            name:  coreapi
+      volumes:
+      - name: config-volume
+        projected:
+          defaultMode: 420
+          sources:
+          - configMap:
+              name: coreapi-app-config
+              optional: true
+      - name: share-volume
+        persistentVolumeClaim:
+          claimName: coreapi-share
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lottabyte-coreapi-service
+  namespace: lotta-prod
+spec:
+  selector:
+    app: lottabyte-coreapi
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
