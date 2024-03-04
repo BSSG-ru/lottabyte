@@ -486,4 +486,57 @@ public class ProductRepository extends WorkflowableRepository<Product> {
                 + " join da_" + userDetails.getTenant() + ".reference r on r.target_id = be.id "
                 + " where r.source_id = ? AND r.reference_type='PRODUCT_TO_BUSINESS_ENTITY_LINK'", new BusinessEntityRepository.BusinessEntityRowMapper(), UUID.fromString(productId));
     }
+
+    public void updateDQRule(String productId, String ruleId, EntitySampleDQRule entitySampleDQRule, UserDetails userDetails) {
+        LocalDateTime now = LocalDateTime.now();
+
+        jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule SET settings=?, modified=?, modifier=?, disabled=?, send_mail=? WHERE dq_rule_id=? AND product_id=?",
+                entitySampleDQRule.getEntity().getSettings(), now, userDetails.getUid(), entitySampleDQRule.getEntity().getDisabled(),
+                entitySampleDQRule.getEntity().getSendMail(), UUID.fromString(ruleId), UUID.fromString(productId));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public EntitySampleDQRule createDQRuleLink(String productId,
+                                               UpdatableEntitySampleDQRule entitySampleDQRule, UserDetails userDetails) throws LottabyteException {
+        UUID id = entitySampleDQRule.getId() == null ? UUID.randomUUID() : UUID.fromString(entitySampleDQRule.getId());
+
+        EntitySampleDQRule esp = new EntitySampleDQRule(entitySampleDQRule);
+        esp.setId(id.toString());
+        LocalDateTime now = LocalDateTime.now();
+        esp.setCreatedAt(now);
+        esp.setModifiedAt(now);
+        esp.setCreatedBy(userDetails.getUid());
+        esp.setModifiedBy(userDetails.getUid());
+
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
+                        + ".entity_sample_to_dq_rule (id, dq_rule_id, settings, created, creator, modified, modifier, disabled, product_id, send_mail, history_id, published_id, ancestor_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                id, UUID.fromString(entitySampleDQRule.getDqRuleId()),
+                entitySampleDQRule.getSettings(), now, userDetails.getUid(), now, userDetails.getUid(),
+                entitySampleDQRule.getDisabled(),
+                UUID.fromString(productId),
+                entitySampleDQRule.getSendMail(),
+                entitySampleDQRule.getHistoryId(),
+                UUID.fromString(entitySampleDQRule.getPublishedId()),
+                entitySampleDQRule.getAncestorId() == null ? null : UUID.fromString(entitySampleDQRule.getAncestorId()));
+
+        return esp;
+    }
+
+    public void addDQRuleLink(String productId, String publishedId,
+                              EntitySampleDQRule entitySampleDQRule, UserDetails userDetails) {
+
+        UUID id = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
+                        + ".entity_sample_to_dq_rule (id,  dq_rule_id, settings, created, creator, modified, modifier, disabled,  product_id, send_mail, history_id, published_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                id, UUID.fromString(entitySampleDQRule.getEntity().getDqRuleId()),
+                entitySampleDQRule.getEntity().getSettings(), now, userDetails.getUid(), now, userDetails.getUid(),
+                entitySampleDQRule.getEntity().getDisabled(),
+                UUID.fromString(productId),
+                entitySampleDQRule.getEntity().getSendMail(), entitySampleDQRule.getEntity().getHistoryId(),
+                publishedId == null ? null : UUID.fromString(publishedId));
+
+    }
 }

@@ -29,6 +29,9 @@ public class QualityRuleTaskEntity extends Entity {
     private String entitySampleId;
     private String entitySampleName;
     private String isCrontab;
+    private String status;
+    private String ruleTypeId;
+    private String ruleTypeName;
 
     public QualityRuleTaskEntity() {
         super(ArtifactType.qualityRuleTask);

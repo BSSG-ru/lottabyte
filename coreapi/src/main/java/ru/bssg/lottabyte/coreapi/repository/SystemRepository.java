@@ -118,7 +118,7 @@ public class SystemRepository extends WorkflowableRepository<System> {
     public Boolean existsSystemInFolder(String systemName, String folderId, String currentId, UserDetails userDetails) {
         Boolean res = null;
         List<Object> params = new ArrayList<>();
-        String query = "SELECT EXISTS(SELECT id FROM da_" + userDetails.getTenant() + ".system WHERE name = ? AND ";
+        String query = "SELECT EXISTS(SELECT id FROM da_" + userDetails.getTenant() + ".system WHERE name = ? AND state='PUBLISHED' AND ";
         params.add(systemName);
         if (folderId == null) {
             query += " system_folder_id is null ";
@@ -520,8 +520,8 @@ public class SystemRepository extends WorkflowableRepository<System> {
         return res;
     }
 
-    public String createSystemDraft(String publishedSystemId, String workflowTaskId, UserDetails userDetails) {
-        UUID newId = UUID.randomUUID();
+    public String createSystemDraft(String publishedSystemId, String draftId, String workflowTaskId, UserDetails userDetails) {
+        UUID newId = draftId != null ? UUID.fromString(draftId) : UUID.randomUUID();
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".system (id, name, description, system_type, connector_id, system_folder_id, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier) " +
                         "SELECT ?, name, description, system_type, connector_id, system_folder_id, ?, ?, id, version_id, created, creator, modified, modifier FROM da_" + userDetails.getTenant() + ".system where id = ?",
                 newId, ArtifactState.DRAFT.toString(),

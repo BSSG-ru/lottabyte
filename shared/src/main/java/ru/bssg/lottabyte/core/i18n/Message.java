@@ -357,6 +357,8 @@ public enum Message {
             "У Business Entity уже есть черновик версии с идентификатором {0}, пожалуйста, измените черновик версии", HttpStatus.BAD_REQUEST),
     LBE02504("The essence itself cannot be synonymous with itself. id {0}",
             "Сущность сама по себе не может быть синонимом самой себя. идентификатор {0}", HttpStatus.BAD_REQUEST),
+    LBE02505("Cannot delete business entity with id {0} which has children",
+            "Нельзя удалить бизнес-сущность {0}, так как у нее есть дочерние элементы", HttpStatus.BAD_REQUEST),
 
     LBE02601("Enumeration with id {0} not found", "Перечисление с идентификатором {0} не найдено", HttpStatus.BAD_REQUEST),
     LBE02602("Enumeration name can not be empty", "Имя перечисления не может быть пустым", HttpStatus.BAD_REQUEST),
@@ -428,6 +430,7 @@ public enum Message {
     LBE03204("You cannot delete an indicator if its id is specified in the formula: {0}",
             "Вы не можете удалить индикатор, если его идентификатор указан в формуле: {0}", HttpStatus.BAD_REQUEST),
     LBE03205("DQ rule is used", "DQ правило используется", HttpStatus.CONFLICT),
+    LBE03206("DQ rule is used. You can only disable it.", "Невозможно удалить привязанное правило проверки качества данных, т.к. по нему уже запущены действующие задачи DQ. Вы можете выключить задачу DQ.", HttpStatus.BAD_REQUEST),
 
 
     LBE03301("Record {0} not found", "Запись {0} не найдена", HttpStatus.NOT_FOUND),

@@ -1054,10 +1054,15 @@ public class EntitySampleService {
         }
 
         public static boolean containsDQRule(List<EntitySampleDQRule> ids, EntitySampleDQRule pattern) {
+                if (pattern.getId() == null)
+                        return false;
+
                 boolean result = false;
-                for (EntitySampleDQRule val : ids) {
-                        if (val.getEntity().getDqRuleId().equals(pattern.getEntity().getDqRuleId()))
-                                result = true;
+                if (ids != null) {
+                        for (EntitySampleDQRule val : ids) {
+                                if (val.getId().equals(pattern.getId()))
+                                        result = true;
+                        }
                 }
                 return result;
         }

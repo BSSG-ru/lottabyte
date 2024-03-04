@@ -627,7 +627,7 @@ public class EntityController {
 
     @Hidden
     @RequestMapping(value = "/model", method = RequestMethod.PATCH, produces = { "application/json" })
-    @Secured(roles = {"lo_mdl_r", "lo_mdl_u"}, level = ANY_ROLE)
+    @Secured(roles = {"lo_mdl_u"}, level = ANY_ROLE)
     @CrossOrigin
     public ResponseEntity<List<GojsModelNodeData>> updateModel(@RequestBody UpdatableGojsModelData updatableGojsModelData, @RequestHeader HttpHeaders headers) throws LottabyteException {
         String token = HttpUtils.getToken(headers);

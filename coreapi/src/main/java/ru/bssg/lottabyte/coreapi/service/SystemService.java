@@ -171,6 +171,11 @@ public class SystemService extends WorkflowableService<System> {
          * draft.getEntity().getName());
          */
 
+        if (systemRepository.existsSystemInFolder(draft.getName(), draft.getEntity().getSystemFolderId(), publishedId,
+                userDetails))
+            throw new LottabyteException(Message.LBE00901,
+                    userDetails.getLanguage(), draft.getName());
+
         if (publishedId == null) {
             String newPublishedId = systemRepository.publishSystemDraft(draftSystemId, null, userDetails);
             if (draft.getEntity().getDomainIds() != null && !draft.getEntity().getDomainIds().isEmpty())
@@ -503,7 +508,7 @@ public class SystemService extends WorkflowableService<System> {
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public System deleteSystem(String systemId, UserDetails userDetails) throws LottabyteException {
-        if (!systemRepository.existsByIdAndPublished(systemId, userDetails))
+        if (!systemRepository.existsById(systemId, userDetails))
             throw new LottabyteException(
                     Message.LBE00904,
                             userDetails.getLanguage(),
@@ -720,15 +725,23 @@ public class SystemService extends WorkflowableService<System> {
                 .forEach(y -> domainRepository.removeSystemFromDomain(systemId, y, userDetails));
     }
 
-    private String createDraftSystem(System current, WorkflowState workflowState, UserDetails userDetails) {
-        String workflowTaskId = workflowService.getNewWorkflowTaskUUID().toString();
-        String draftId = systemRepository.createSystemDraft(current.getId(), workflowTaskId, userDetails);
+    private String createDraftSystem(System current, WorkflowState workflowState, UserDetails userDetails) throws LottabyteException {
+        ProcessInstance pi = null;
+        String draftId = null;
+        String workflowTaskId = null;
+
+        draftId = UUID.randomUUID().toString();
+        pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.REMOVE, userDetails);
+        workflowTaskId = pi.getId();
+
+        draftId = systemRepository.createSystemDraft(current.getId(), draftId, workflowTaskId, userDetails);
+
         if (current.getEntity().getDomainIds() != null && !current.getEntity().getDomainIds().isEmpty())
             for (String d : current.getEntity().getDomainIds())
                 systemRepository.addSystemToDomain(draftId, d, userDetails);
+
         tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
-        workflowService.postCreateDraft(workflowTaskId, WorkflowType.REMOVE, draftId, serviceArtifactType,
-                workflowState, userDetails);
+
         return draftId;
     }
 

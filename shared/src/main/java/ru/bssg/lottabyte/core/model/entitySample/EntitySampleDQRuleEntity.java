@@ -18,7 +18,11 @@ public class EntitySampleDQRuleEntity extends Entity {
     private Boolean disabled;
     private String indicatorId;
     private String productId;
+    private String assetId;
     private Boolean sendMail;
+    private Integer historyId;
+    private String publishedId;
+    private String ancestorId;
 
     public EntitySampleDQRuleEntity() {
         super(ArtifactType.entity_sample_to_dq_rule);

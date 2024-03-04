@@ -84,7 +84,8 @@ public class EntityService extends WorkflowableService<DataEntity> {
                         new SearchColumn("version_id", SearchColumn.ColumnType.Number),
                         new SearchColumn("attribute_type", SearchColumn.ColumnType.Text),
                         new SearchColumn("attribute_type_name", SearchColumn.ColumnType.Text),
-                        new SearchColumn("tags", SearchColumn.ColumnType.Text)
+                        new SearchColumn("tags", SearchColumn.ColumnType.Text),
+                        new SearchColumn("is_pk", SearchColumn.ColumnType.Number)
         };
 
         private final SearchColumnForJoin[] joinColumns = {
@@ -192,6 +193,8 @@ public class EntityService extends WorkflowableService<DataEntity> {
                 }
                 mergeEntityAttributes(current.getId(), draftId, userDetails);
 
+                tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
+
                 return draftId;
         }
 
@@ -273,7 +276,7 @@ public class EntityService extends WorkflowableService<DataEntity> {
                         return e;
                 } else {
                         entityRepository.publishEntityDraft(draftEntityId, publishedId, userDetails);
-                        DataEntity currentPublished = entityRepository.getById(publishedId, userDetails);
+                        DataEntity currentPublished = getDataEntityById(publishedId, userDetails);
                         updateEntitySystems(publishedId, draft.getEntity().getSystemIds(),
                                         currentPublished.getEntity().getSystemIds(), userDetails);
                         mergeEntityAttributes(draftEntityId, publishedId, userDetails);
@@ -635,6 +638,7 @@ public class EntityService extends WorkflowableService<DataEntity> {
                                 ent.setName(a.getEntity().getName());
                                 ent.setEntityId(targetEntityId);
                                 ent.setId(tAttr.get().getId());
+                                ent.setIsPk(a.getEntity().getIsPk());
                                 entityRepository.patchEntityAttribute(tAttr.get().getId(),
                                                 new UpdatableDataEntityAttributeEntity(ent),
                                                 userDetails);
@@ -1399,6 +1403,7 @@ public class EntityService extends WorkflowableService<DataEntity> {
 
         private void updateEntitySystems(String entityId, List<String> ids, List<String> currentIds,
                         UserDetails userDetails) {
+                log.info("updateEntitySystems " + (ids == null ? "null" : ids.size()) + " " + (currentIds == null ? "null" : currentIds.size()));
                 ids.stream().filter(x -> (currentIds == null || !currentIds.contains(x))).collect(Collectors.toList())
                                 .forEach(y -> entityRepository.addEntityToSystem(entityId, y, userDetails));
                 if (currentIds != null) {

@@ -18,6 +18,7 @@ import ru.bssg.lottabyte.core.model.businessEntity.BusinessEntity;
 import ru.bssg.lottabyte.core.model.dataentity.*;
 import ru.bssg.lottabyte.core.model.datatype.DataType;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
+import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
 import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.domain.Domain;
 import ru.bssg.lottabyte.core.model.indicator.FlatIndicator;
@@ -58,6 +59,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
     private final ArtifactType serviceArtifactType = ArtifactType.indicator;
     private final EntitySampleRepository entitySampleRepository;
     private final DataTypeRepository dataTypeRepository;
+    private final DQRuleService dqRuleService;
 
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
@@ -81,7 +83,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             IndicatorRepository indicatorRepository, DomainRepository domainRepository,
             EntitySampleRepository entitySampleRepository, TagService tagService,
             WorkflowService workflowService, ReferenceService referenceService,
-            DataTypeRepository dataTypeRepository) {
+            DataTypeRepository dataTypeRepository, DQRuleService dqRuleService) {
         super(indicatorRepository, workflowService, tagService, ArtifactType.indicator, elasticsearchService);
         this.dataAssetService = dataAssetService;
         this.customAttributeDefinitionService = customAttributeDefinitionService;
@@ -94,6 +96,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         this.referenceService = referenceService;
         this.entitySampleRepository = entitySampleRepository;
         this.dataTypeRepository = dataTypeRepository;
+        this.dqRuleService = dqRuleService;
     }
 
     public Boolean allIndicatorsExist(List<String> systemIds, UserDetails userDetails) {
@@ -119,26 +122,36 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             }
 
             if (draft.getEntity().getDqRules() != null && !draft.getEntity().getDqRules().isEmpty())
-                for (EntitySampleDQRule s : draft.getEntity().getDqRules())
-                    indicatorRepository.addDQRule(publishedId, s, userDetails);
+                mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), null, userDetails);
+
 
             tagService.mergeTags(draftIndicatorId, serviceArtifactType, publishedId, serviceArtifactType, userDetails);
             indicator = getIndicatorById(publishedId, userDetails);
             elasticsearchService.insertElasticSearchEntity(
                     Collections.singletonList(getSearchableArtifact(indicator, userDetails)), userDetails);
         } else {
+            Indicator currentPublished = getIndicatorById(publishedId, userDetails);
+
+            if (currentPublished.getEntity().getDqRules() != null) {
+                for (EntitySampleDQRule rule : currentPublished.getEntity().getDqRules()) {
+                    boolean isDeleting = draft.getEntity().getDqRules() == null || draft.getEntity().getDqRules().stream().noneMatch(x -> x.getEntity().getAncestorId().equals(rule.getId()));
+                    if (isDeleting && dqRuleService.existsInLog(rule.getId(), userDetails)) {
+                        throw new LottabyteException(Message.LBE03206, userDetails.getLanguage());
+                    }
+                }
+            }
+
             indicatorRepository.publishDraft(draftIndicatorId, publishedId, userDetails);
 
-            Indicator currentPublished = getIndicatorById(publishedId, userDetails);
-            updateDQRules(publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(),
-                    userDetails);
+
             if (referenceService.getReferenceBySourceId(publishedId, userDetails) != null)
                 referenceService.deleteReferenceBySourceId(publishedId, userDetails);
 
             if (draft.getEntity() != null) {
                 updateReferenceForAssets(draft.getEntity().getDataAssetIds(), draft.getId(), publishedId, userDetails);
-                log.info("createReferenceForAssets " + draft.getEntity().getDataAssetIds().size() + " " + publishedId);
                 createReferenceForAssets(draft.getEntity().getDataAssetIds(), publishedId, publishedId, userDetails);
+
+                mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
             }
 
             if (draft.getEntity().getTermLinkIds() != null && !draft.getEntity().getTermLinkIds().isEmpty()) {
@@ -193,6 +206,11 @@ public class IndicatorService extends WorkflowableService<Indicator> {
                             userDetails.getLanguage(), indicatorId);
 
         List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByIndicator(indicatorId, userDetails);
+        if (((WorkflowableMetadata)indicator.getMetadata()).getState().equals(ArtifactState.PUBLISHED)) {
+            for (EntitySampleDQRule r : dqRules) {
+                r.getEntity().setAncestorId(r.getId());
+            }
+        }
         indicator.getEntity().setDqRules(dqRules);
 
         List<Reference> referenceForDataAsset = referenceService.getAllReferenceBySourceIdAndTargetType(indicatorId,
@@ -316,6 +334,50 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         }
     }
 
+    public void mergeDQRules(String draftId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
+
+        if (publishedRules != null) {
+            for (EntitySampleDQRule rule : publishedRules) {
+                if (draftRules == null || draftRules.stream().filter(x -> x.getEntity().getAncestorId() != null && x.getEntity().getAncestorId().equals(rule.getId())).count() == 0)
+                    dqRuleService.deleteDQRuleLinkById(rule.getId(), userDetails);
+            }
+        }
+
+        if (draftRules != null) {
+            for (EntitySampleDQRule rule : draftRules) {
+                EntitySampleDQRuleEntity e = new EntitySampleDQRuleEntity();
+                e.setIndicatorId(publishedId);
+                e.setDqRuleId(rule.getEntity().getDqRuleId());
+                e.setPublishedId(publishedId);
+                e.setSettings(rule.getEntity().getSettings());
+                e.setAncestorId(null);
+                e.setSendMail(rule.getEntity().getSendMail());
+                e.setDisabled(rule.getEntity().getDisabled());
+
+                if (rule.getEntity().getAncestorId() != null)
+                    dqRuleService.patchDQRuleLinkById(rule.getEntity().getAncestorId(), new UpdatableEntitySampleDQRule(e), userDetails);
+                else
+                    dqRuleService.createDQRuleLink(e, userDetails);
+            }
+        }
+
+    }
+
+    public void updateReferenceForDQRules(List<EntitySampleDQRule> rules, String draftId, String publishedId,
+                                         UserDetails userDetails) throws LottabyteException {
+        if (rules != null && !rules.isEmpty()) {
+            for (EntitySampleDQRule item : rules) {
+                EntitySampleDQRuleEntity entity = new EntitySampleDQRuleEntity();
+                entity.setIndicatorId(draftId);
+                entity.setDqRuleId(item.getEntity().getDqRuleId());
+                entity.setPublishedId(publishedId);
+
+                UpdatableEntitySampleDQRule updatableEntitySampleDQRule = new UpdatableEntitySampleDQRule(entity);
+                dqRuleService.patchDQRuleByIndicatorIdAndRuleId(publishedId, item.getEntity().getDqRuleId(), updatableEntitySampleDQRule, userDetails);
+            }
+        }
+    }
+
     public void createReferenceForAssets(List<String> dataAssetIds, String newIndicatorId, String publishedId,
             UserDetails userDetails) throws LottabyteException {
         Integer versionId = referenceService.getLastVersionByPublishedId(publishedId, userDetails);
@@ -333,6 +395,33 @@ public class IndicatorService extends WorkflowableService<Indicator> {
 
                 UpdatableReferenceEntity newReferenceEntity = new UpdatableReferenceEntity(referenceEntity);
                 referenceService.createReference(newReferenceEntity, userDetails);
+            }
+        }
+    }
+
+    public void createDQRulesLinks(List<EntitySampleDQRule> dqRules, String indicatorId, String publishedIndicatorId,
+                                         UserDetails userDetails, boolean setAncestorIds) throws LottabyteException {
+        Integer historyId = publishedIndicatorId == null ? 0 : dqRuleService.getLastHistoryIdByPublishedId(publishedIndicatorId, userDetails);
+
+        if (dqRules != null && !dqRules.isEmpty()) {
+            for (EntitySampleDQRule item : dqRules) {
+                EntitySampleDQRuleEntity entity = new EntitySampleDQRuleEntity();
+                entity.setIndicatorId(indicatorId);
+                entity.setDisabled(item.getEntity().getDisabled());
+                entity.setDescription(item.getEntity().getDescription());
+                entity.setDqRuleId(item.getEntity().getDqRuleId());
+                entity.setSettings(item.getEntity().getSettings());
+                entity.setSendMail(item.getEntity().getSendMail());
+                entity.setPublishedId(publishedIndicatorId);
+                entity.setHistoryId(historyId);
+
+                if (setAncestorIds)
+                    entity.setAncestorId(item.getId());
+                else
+                    entity.setAncestorId(item.getEntity().getAncestorId());
+
+                UpdatableEntitySampleDQRule updatableEntitySampleDQRule = new UpdatableEntitySampleDQRule(entity);
+                indicatorRepository.createDQRuleLink(indicatorId, updatableEntitySampleDQRule, userDetails);
             }
         }
     }
@@ -370,6 +459,16 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             throw new LottabyteException(Message.LBE02402,
                             userDetails.getLanguage(), indicatorEntity.getName());
 
+        if (current.getEntity().getDqRules() != null) {
+            for (EntitySampleDQRule rule : current.getEntity().getDqRules()) {
+                boolean isDeleting = indicatorEntity.getDqRules() != null && indicatorEntity.getDqRules().stream().noneMatch(x -> x.getId().equals(rule.getId()));
+                log.info("check delete rule " + rule.getId() + " = " + isDeleting);
+                if (isDeleting && dqRuleService.existsInLog(rule.getId(), userDetails)) {
+                    throw new LottabyteException(Message.LBE03206, userDetails.getLanguage());
+                }
+            }
+        }
+
         ProcessInstance pi = null;
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
             String workflowTaskId = null;
@@ -384,14 +483,10 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             }
             indicatorRepository.createDraftFromPublished(indicatorId, draftId, workflowTaskId, userDetails);
 
-            if (indicatorEntity.getDqRules() != null && !indicatorEntity.getDqRules().isEmpty()) {
-                for (EntitySampleDQRule s : indicatorEntity.getDqRules()) {
-                    indicatorRepository.addDQRule(draftId, s, userDetails);
-                }
+            if (indicatorEntity.getDqRules() != null) {
+                createDQRulesLinks(indicatorEntity.getDqRules(), draftId, indicatorId, userDetails, false);
             } else if (current.getEntity().getDqRules() != null && !current.getEntity().getDqRules().isEmpty()) {
-                for (EntitySampleDQRule s : current.getEntity().getDqRules()) {
-                    indicatorRepository.addDQRule(draftId, s, userDetails);
-                }
+                createDQRulesLinks(current.getEntity().getDqRules(), draftId, indicatorId, userDetails, true);
             }
 
             if (indicatorEntity.getDataAssetIds() != null)
@@ -414,7 +509,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
 
         } else {
             draftId = indicatorId;
-            updateDQRules(indicatorId, indicatorEntity.getDqRules(), current.getEntity().getDqRules(), userDetails);
+            updateDQRulesLinks(indicatorId, ((WorkflowableMetadata) current.getMetadata()).getPublishedId(), indicatorEntity.getDqRules(), current.getEntity().getDqRules(), userDetails);
             if (indicatorEntity.getDataAssetIds() != null) {
                 if (current.getEntity().getDataAssetIds() != null && !current.getEntity().getDataAssetIds().isEmpty()) {
                     for (String id : current.getEntity().getDataAssetIds()) {
@@ -443,13 +538,16 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         return getIndicatorById(draftId, userDetails);
     }
 
-    private void updateDQRules(String indicatorId, List<EntitySampleDQRule> ids, List<EntitySampleDQRule> currentIds,
+    private void updateDQRulesLinks(String indicatorId, String publishedId, List<EntitySampleDQRule> newRules, List<EntitySampleDQRule> currentRules,
             UserDetails userDetails) {
-        if (currentIds != null && ids != null) {
-            ids.stream().filter(x -> !EntitySampleService.containsDQRule(currentIds, x)).collect(Collectors.toList())
-                    .forEach(y -> indicatorRepository.addDQRule(indicatorId, y, userDetails));
-            currentIds.stream().filter(x -> !EntitySampleService.containsDQRule(ids, x)).collect(Collectors.toList())
-                    .forEach(y -> indicatorRepository.removeDQRule(y.getId(), userDetails));
+        if (newRules != null) {
+            newRules.stream().filter(x -> EntitySampleService.containsDQRule(currentRules, x)).forEach(y -> entitySampleRepository.updateDQRuleLink(y.getId(), y, userDetails));
+            newRules.stream().filter(x -> !EntitySampleService.containsDQRule(currentRules, x))
+                    .forEach(y -> indicatorRepository.addDQRuleLink(indicatorId, publishedId, y, userDetails));
+            if (currentRules != null) {
+                currentRules.stream().filter(x -> !EntitySampleService.containsDQRule(newRules, x))
+                        .forEach(y -> entitySampleRepository.removeDQRuleLink(y.getId(), userDetails));
+            }
         }
     }
 
@@ -606,11 +704,16 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             List<String> assetIdList = referenceForAsset.stream().map(r -> r.getEntity().getTargetId())
                     .collect(Collectors.toList());
             indicator.getEntity().setDataAssetIds(assetIdList);
+            List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByIndicator(md.getAncestorDraftId(), userDetails);
+            indicator.getEntity().setDqRules(dqRules);
         } else {
             List<Reference> referenceForAsset = referenceService.getAllReferenceBySourceIdAndTargetType(
                     indicator.getId(), String.valueOf(ArtifactType.data_asset), userDetails);
             indicator.getEntity().setDataAssetIds(
                     referenceForAsset.stream().map(r -> r.getEntity().getTargetId()).collect(Collectors.toList()));
+
+            List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByIndicator(indicator.getId(), userDetails);
+            indicator.getEntity().setDqRules(dqRules);
         }
     }
 
@@ -659,6 +762,8 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             createTermLinksReference(current.getEntity().getTermLinkIds(), draftId, publishedId, userDetails);
         }
 
+        tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
+
         return draftId;
     }
 
@@ -693,7 +798,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             UpdatableEntitySampleDQRule entitySampleDQRule, UserDetails userDetails)
             throws LottabyteException {
 
-        EntitySampleDQRule sampleDQRule = indicatorRepository.createDQRule(indicatorId,
+        EntitySampleDQRule sampleDQRule = indicatorRepository.createDQRuleLink(indicatorId,
                 entitySampleDQRule, userDetails);
         return entitySampleRepository.getSampleDQRule(sampleDQRule.getId(), userDetails);
     }

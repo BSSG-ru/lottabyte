@@ -17,12 +17,11 @@ import ru.bssg.lottabyte.core.model.dataasset.FlatDataAsset;
 import ru.bssg.lottabyte.core.model.dataasset.SearchableDataAsset;
 import ru.bssg.lottabyte.core.model.dataasset.UpdatableDataAssetEntity;
 import ru.bssg.lottabyte.core.model.dataentity.DataEntity;
-import ru.bssg.lottabyte.core.model.dataentity.FlatDataEntity;
 import ru.bssg.lottabyte.core.model.domain.Domain;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySample;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
-import ru.bssg.lottabyte.core.model.indicator.Indicator;
-import ru.bssg.lottabyte.core.model.product.Product;
+import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
+import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.system.System;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowTask;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowType;
@@ -52,6 +51,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
         private final EntitySampleService entitySampleService;
         private final WorkflowService workflowService;
         private final ArtifactType serviceArtifactType = ArtifactType.data_asset;
+        private final DQRuleService dqRuleService;
 
         private final SearchColumn[] searchableColumns = {
                         new SearchColumn("name", SearchColumn.ColumnType.Text),
@@ -85,7 +85,8 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         WorkflowService workflowService, DomainRepository domainRepository,
                         SystemRepository systemRepository,
                         EntityRepository entityRepository,
-                        EntitySampleRepository entitySampleRepository) {
+                        EntitySampleRepository entitySampleRepository,
+                                DQRuleService dqRuleService) {
                 super(dataAssetRepository, workflowService, tagService, ArtifactType.data_asset, elasticsearchService);
                 this.dataAssetRepository = dataAssetRepository;
                 this.customAttributeDefinitionService = customAttributeDefinitionService;
@@ -100,6 +101,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                 this.workflowService = workflowService;
                 this.businessEntityRepository = businessEntityRepository;
                 this.entitySampleRepository = entitySampleRepository;
+                this.dqRuleService = dqRuleService;
         }
 
         // WF interface
@@ -126,6 +128,8 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
 
                 customAttributeDefinitionService.copyCustomAttributes(publishedId, draftId, serviceArtifactType,
                                 userDetails);
+
+                tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
 
                 return draftId;
         }
@@ -227,8 +231,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         publishedId = dataAssetRepository.publishDraft(draftDataAssetId, null, userDetails);
 
                         if (draft.getEntity().getDqRules() != null && !draft.getEntity().getDqRules().isEmpty())
-                                for (EntitySampleDQRule s : draft.getEntity().getDqRules())
-                                        dataAssetRepository.addDQRule(publishedId, s, userDetails);
+                                mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), null, userDetails);
 
                         tagService.mergeTags(draftDataAssetId, serviceArtifactType, publishedId, serviceArtifactType,
                                         userDetails);
@@ -239,11 +242,21 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                                         Collections.singletonList(getSearchableArtifact(dataAsset, userDetails)),
                                         userDetails);
                 } else {
-                        dataAssetRepository.publishDraft(draftDataAssetId, publishedId, userDetails);
                         DataAsset currentPublished = getDataAssetById(publishedId, userDetails);
-                        updateDQRules(publishedId, draft.getEntity().getDqRules(),
-                                        currentPublished.getEntity().getDqRules(),
-                                        userDetails);
+
+                        if (currentPublished.getEntity().getDqRules() != null) {
+                                for (EntitySampleDQRule rule : currentPublished.getEntity().getDqRules()) {
+                                        boolean isDeleting = draft.getEntity().getDqRules() == null || draft.getEntity().getDqRules().stream().noneMatch(x -> x.getEntity().getAncestorId().equals(rule.getId()));
+                                        if (isDeleting && dqRuleService.existsInLog(rule.getId(), userDetails)) {
+                                                throw new LottabyteException(Message.LBE03206, userDetails.getLanguage());
+                                        }
+                                }
+                        }
+
+                        dataAssetRepository.publishDraft(draftDataAssetId, publishedId, userDetails);
+
+                        mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
+
                         tagService.mergeTags(draftDataAssetId, serviceArtifactType, publishedId, serviceArtifactType,
                                         userDetails);
                         customAttributeDefinitionService.patchCustomAttributes(draft.getEntity().getCustomAttributes(),
@@ -294,6 +307,11 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         throw new LottabyteException(Message.LBE00503,
                                         userDetails.getLanguage(), id);
                 List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByAsset(id, userDetails);
+                if (((WorkflowableMetadata)dataAsset.getMetadata()).getState().equals(ArtifactState.PUBLISHED)) {
+                        for (EntitySampleDQRule r : dqRules) {
+                                r.getEntity().setAncestorId(r.getId());
+                        }
+                }
                 dataAsset.getEntity().setDqRules(dqRules);
 
                 dataAsset.getEntity().setCustomAttributes(
@@ -575,7 +593,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
         @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
         public DataAsset patchDataAsset(String dataAssetId, UpdatableDataAssetEntity dataAssetEntity,
                         UserDetails userDetails) throws LottabyteException {
-                DataAsset current = dataAssetRepository.getById(dataAssetId, userDetails);
+                DataAsset current = getDataAssetById(dataAssetId, userDetails);
                 if (current == null)
                         throw new LottabyteException(Message.LBE00503,
                                                         userDetails.getLanguage(), dataAssetId);
@@ -594,13 +612,6 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                 if (dataAssetEntity.getName() != null && dataAssetEntity.getName().isEmpty())
                         throw new LottabyteException(Message.LBE00501,
                                         userDetails.getLanguage());
-                /*
-                 * if (dataAssetEntity.getName() != null &&
-                 * dataAssetRepository.existsDataAssetByName(dataAssetEntity.getName(),
-                 * dataAssetId, userDetails))
-                 * throw new LottabyteException(HttpStatus.BAD_REQUEST,
-                 * Message.format(Message.LBE00502, dataAssetEntity.getName()));
-                 */
                 if (dataAssetEntity.getSystemId() != null && !dataAssetEntity.getSystemId().isEmpty())
                         validateSystem(dataAssetEntity, current.getEntity().getSystemId(), userDetails);
                 if (dataAssetEntity.getDomainId() != null && !dataAssetEntity.getDomainId().isEmpty())
@@ -613,6 +624,16 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                                 customAttributeDefinitionService.validateCustomAttribute(ca, caDefIds, userDetails);
                         }
                 }
+
+                if (current.getEntity().getDqRules() != null) {
+                        for (EntitySampleDQRule rule : current.getEntity().getDqRules()) {
+                                boolean isDeleting = dataAssetEntity.getDqRules() != null && dataAssetEntity.getDqRules().stream().noneMatch(x -> x.getId().equals(rule.getId()));
+                                if (isDeleting && dqRuleService.existsInLog(rule.getId(), userDetails)) {
+                                        throw new LottabyteException(Message.LBE03206, userDetails.getLanguage());
+                                }
+                        }
+                }
+
                 ProcessInstance pi = null;
                 if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
 
@@ -631,15 +652,10 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         draftId = dataAssetRepository.createDraftFromPublished(dataAssetId, draftId, workflowTaskId,
                                         userDetails);
 
-                        if (dataAssetEntity.getDqRules() != null && !dataAssetEntity.getDqRules().isEmpty()) {
-                                for (EntitySampleDQRule s : dataAssetEntity.getDqRules()) {
-                                        dataAssetRepository.addDQRule(draftId, s, userDetails);
-                                }
-                        } else if (current.getEntity().getDqRules() != null
-                                        && !current.getEntity().getDqRules().isEmpty()) {
-                                for (EntitySampleDQRule s : current.getEntity().getDqRules()) {
-                                        dataAssetRepository.addDQRule(draftId, s, userDetails);
-                                }
+                        if (dataAssetEntity.getDqRules() != null) {
+                                createDQRulesLinks(dataAssetEntity.getDqRules(), draftId, dataAssetId, userDetails, false);
+                        } else if (current.getEntity().getDqRules() != null && !current.getEntity().getDqRules().isEmpty()) {
+                                createDQRulesLinks(current.getEntity().getDqRules(), draftId, dataAssetId, userDetails, true);
                         }
 
                         customAttributeDefinitionService.copyCustomAttributes(dataAssetId, draftId, serviceArtifactType,
@@ -649,8 +665,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
 
                 } else {
                         draftId = dataAssetId;
-                        updateDQRules(dataAssetId, dataAssetEntity.getDqRules(), current.getEntity().getDqRules(),
-                                        userDetails);
+                        updateDQRulesLinks(dataAssetId, ((WorkflowableMetadata) current.getMetadata()).getPublishedId(), dataAssetEntity.getDqRules(), current.getEntity().getDqRules(), userDetails);
                 }
 
                 dataAssetRepository.patchDataAsset(draftId, dataAssetEntity, userDetails);
@@ -665,9 +680,8 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
 
         private void updateDQRules(String assetId, List<EntitySampleDQRule> ids, List<EntitySampleDQRule> currentIds,
                         UserDetails userDetails) {
-                log.info("updateDQRules1 " + currentIds);
-                log.info("updateDQRules1 " + ids);
                 if (currentIds != null && ids != null) {
+                        ids.stream().filter(x -> EntitySampleService.containsDQRule(currentIds, x)).forEach(y -> dataAssetRepository.updateDQRule(assetId, y.getEntity().getDqRuleId(), y, userDetails));
                         ids.stream().filter(x -> !EntitySampleService.containsDQRule(currentIds, x))
                                         .collect(Collectors.toList())
                                         .forEach(y -> dataAssetRepository.addDQRule(assetId, y, userDetails));
@@ -761,14 +775,18 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
         private void fillDataAssetVersionRelations(DataAsset dataAsset, UserDetails userDetails)
                         throws LottabyteException {
                 WorkflowableMetadata md = (WorkflowableMetadata) dataAsset.getMetadata();
-                if (md.getAncestorDraftId() != null) {
-                        dataAsset.getMetadata()
-                                        .setTags(tagService.getArtifactTags(md.getAncestorDraftId(), userDetails));
-                        dataAsset.getEntity().setCustomAttributes(
-                                        customAttributeDefinitionService.getCustomAttributeByObjectId(
-                                                        md.getAncestorDraftId(),
-                                                        userDetails));
-                }
+
+                String id = (md.getAncestorDraftId() == null ? dataAsset.getId() : md.getAncestorDraftId());
+
+                dataAsset.getMetadata()
+                                .setTags(tagService.getArtifactTags(id, userDetails));
+                dataAsset.getEntity().setCustomAttributes(
+                                customAttributeDefinitionService.getCustomAttributeByObjectId(
+                                                id,
+                                                userDetails));
+
+                List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByProduct(id, userDetails);
+                dataAsset.getEntity().setDqRules(dqRules);
         }
 
         public SearchResponse<FlatDataAsset> searchDataAssetsByBE(SearchRequestWithJoin request, String beId,
@@ -846,5 +864,83 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                 }
                 sa.setDomains(Collections.singletonList(dataAsset.getEntity().getDomainId()));
                 return sa;
+        }
+
+        /*public EntitySampleDQRule createDQRule(String dataAssetId,
+                                               UpdatableEntitySampleDQRule entitySampleDQRule, UserDetails userDetails)
+                throws LottabyteException {
+
+                EntitySampleDQRule sampleDQRule = dataAssetRepository.createDQRule(dataAssetId,
+                        entitySampleDQRule, userDetails);
+                return entitySampleRepository.getSampleDQRule(sampleDQRule.getId(), userDetails);
+        }*/
+
+        public void mergeDQRules(String draftId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
+
+                if (publishedRules != null) {
+                        for (EntitySampleDQRule rule : publishedRules) {
+                                if (draftRules == null || draftRules.stream().filter(x -> x.getEntity().getAncestorId() != null && x.getEntity().getAncestorId().equals(rule.getId())).count() == 0)
+                                        dqRuleService.deleteDQRuleLinkById(rule.getId(), userDetails);
+                        }
+                }
+
+                if (draftRules != null) {
+                        for (EntitySampleDQRule rule : draftRules) {
+                                EntitySampleDQRuleEntity e = new EntitySampleDQRuleEntity();
+                                e.setAssetId(publishedId);
+                                e.setDqRuleId(rule.getEntity().getDqRuleId());
+                                e.setPublishedId(publishedId);
+                                e.setSettings(rule.getEntity().getSettings());
+                                e.setAncestorId(null);
+                                e.setSendMail(rule.getEntity().getSendMail());
+                                e.setDisabled(rule.getEntity().getDisabled());
+
+                                if (rule.getEntity().getAncestorId() != null)
+                                        dqRuleService.patchDQRuleLinkById(rule.getEntity().getAncestorId(), new UpdatableEntitySampleDQRule(e), userDetails);
+                                else
+                                        dqRuleService.createDQRuleLink(e, userDetails);
+                        }
+                }
+
+        }
+
+        public void createDQRulesLinks(List<EntitySampleDQRule> dqRules, String dataAssetId, String publishedDataAssetId,
+                                       UserDetails userDetails, boolean setAncestorIds) throws LottabyteException {
+                Integer historyId = publishedDataAssetId == null ? 0 : dqRuleService.getLastHistoryIdByPublishedId(publishedDataAssetId, userDetails);
+
+                if (dqRules != null && !dqRules.isEmpty()) {
+                        for (EntitySampleDQRule item : dqRules) {
+                                EntitySampleDQRuleEntity entity = new EntitySampleDQRuleEntity();
+                                entity.setProductId(dataAssetId);
+                                entity.setDisabled(item.getEntity().getDisabled());
+                                entity.setDescription(item.getEntity().getDescription());
+                                entity.setDqRuleId(item.getEntity().getDqRuleId());
+                                entity.setSettings(item.getEntity().getSettings());
+                                entity.setSendMail(item.getEntity().getSendMail());
+                                entity.setPublishedId(publishedDataAssetId);
+                                entity.setHistoryId(historyId);
+
+                                if (setAncestorIds)
+                                        entity.setAncestorId(item.getId());
+                                else
+                                        entity.setAncestorId(item.getEntity().getAncestorId());
+
+                                UpdatableEntitySampleDQRule updatableEntitySampleDQRule = new UpdatableEntitySampleDQRule(entity);
+                                dataAssetRepository.createDQRuleLink(dataAssetId, updatableEntitySampleDQRule, userDetails);
+                        }
+                }
+        }
+
+        private void updateDQRulesLinks(String productId, String publishedId, List<EntitySampleDQRule> newRules, List<EntitySampleDQRule> currentRules,
+                                        UserDetails userDetails) {
+                if (newRules != null) {
+                        newRules.stream().filter(x -> EntitySampleService.containsDQRule(currentRules, x)).forEach(y -> entitySampleRepository.updateDQRuleLink(y.getId(), y, userDetails));
+                        newRules.stream().filter(x -> !EntitySampleService.containsDQRule(currentRules, x))
+                                .forEach(y -> dataAssetRepository.addDQRuleLink(productId, publishedId, y, userDetails));
+                        if (currentRules != null) {
+                                currentRules.stream().filter(x -> !EntitySampleService.containsDQRule(newRules, x))
+                                        .forEach(y -> entitySampleRepository.removeDQRuleLink(y.getId(), userDetails));
+                        }
+                }
         }
 }

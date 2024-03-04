@@ -17,6 +17,7 @@ public class DataEntityAttributeEntity extends Entity {
     private List<String> mappedSamplePropertyIds;
     private List<String> tags;
     private String attributeId;
+    private Boolean isPk;
 
     public DataEntityAttributeEntity() {
         super(ArtifactType.entity_attribute);

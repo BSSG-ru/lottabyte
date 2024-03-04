@@ -15,6 +15,7 @@ import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.businessEntity.BusinessEntity;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
+import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
 import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.product.*;
 import ru.bssg.lottabyte.core.model.reference.Reference;
@@ -50,6 +51,7 @@ public class ProductService extends WorkflowableService<Product> {
     private final ElasticsearchService elasticsearchService;
     private final EntitySampleRepository entitySampleRepository;
     private final ArtifactService artifactService;
+    private final DQRuleService dqRuleService;
 
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
@@ -96,7 +98,8 @@ public class ProductService extends WorkflowableService<Product> {
             EntityService entityService, TagService tagService,
             DomainService domainService,
             WorkflowService workflowService,
-            ArtifactService artifactService) {
+            ArtifactService artifactService,
+            DQRuleService dqRuleService) {
         super(productRepository, workflowService, tagService, ArtifactType.product, elasticsearchService);
         this.productRepository = productRepository;
         this.referenceService = referenceService;
@@ -110,6 +113,7 @@ public class ProductService extends WorkflowableService<Product> {
         this.elasticsearchService = elasticsearchService;
         this.entitySampleRepository = entitySampleRepository;
         this.artifactService = artifactService;
+        this.dqRuleService = dqRuleService;
     }
 
     public Product wfPublish(String draftEntityId, UserDetails userDetails) throws LottabyteException {
@@ -127,8 +131,7 @@ public class ProductService extends WorkflowableService<Product> {
             }
 
             if (draft.getEntity().getDqRules() != null && !draft.getEntity().getDqRules().isEmpty())
-                for (EntitySampleDQRule s : draft.getEntity().getDqRules())
-                    productRepository.addDQRule(newPublishedId, s, userDetails);
+                mergeDQRules(draft.getId(), newPublishedId, draft.getEntity().getDqRules(), null, userDetails);
 
             tagService.mergeTags(draftEntityId, serviceArtifactType, newPublishedId, serviceArtifactType, userDetails);
             Product product = getProductById(newPublishedId, userDetails);
@@ -136,10 +139,19 @@ public class ProductService extends WorkflowableService<Product> {
                     Collections.singletonList(getSearchableArtifact(product, userDetails)), userDetails);
             return product;
         } else {
-            productRepository.publishProductDraft(draftEntityId, publishedId, userDetails);
             Product currentPublished = getProductById(publishedId, userDetails);
-            updateDQRules(publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(),
-                    userDetails);
+
+            if (currentPublished.getEntity().getDqRules() != null) {
+                for (EntitySampleDQRule rule : currentPublished.getEntity().getDqRules()) {
+                    boolean isDeleting = draft.getEntity().getDqRules() == null || draft.getEntity().getDqRules().stream().noneMatch(x -> x.getEntity().getAncestorId().equals(rule.getId()));
+                    if (isDeleting && dqRuleService.existsInLog(rule.getId(), userDetails)) {
+                        throw new LottabyteException(Message.LBE03206, userDetails.getLanguage());
+                    }
+                }
+            }
+
+            productRepository.publishProductDraft(draftEntityId, publishedId, userDetails);
+
             if (referenceService.getReferenceBySourceId(publishedId, userDetails) != null)
                 referenceService.deleteReferenceBySourceId(publishedId, userDetails);
 
@@ -148,6 +160,8 @@ public class ProductService extends WorkflowableService<Product> {
                         userDetails);
                 createProductReference(new UpdatableProductEntity(draft.getEntity()), publishedId, publishedId,
                         userDetails);
+
+                mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
             }
 
             if (draft.getEntity().getTermLinkIds() != null && !draft.getEntity().getTermLinkIds().isEmpty()) {
@@ -188,6 +202,11 @@ public class ProductService extends WorkflowableService<Product> {
                             userDetails.getLanguage(), productId);
 
         List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByProduct(productId, userDetails);
+        if (((WorkflowableMetadata)product.getMetadata()).getState().equals(ArtifactState.PUBLISHED)) {
+            for (EntitySampleDQRule r : dqRules) {
+                r.getEntity().setAncestorId(r.getId());
+            }
+        }
         product.getEntity().setDqRules(dqRules);
 
         List<Reference> referenceForAttr = referenceService.getAllReferenceBySourceIdAndTargetType(productId,
@@ -301,39 +320,42 @@ public class ProductService extends WorkflowableService<Product> {
     private void fillProductVersionRelations(Product product, Integer versionId, UserDetails userDetails) {
         WorkflowableMetadata md = (WorkflowableMetadata) product.getMetadata();
 
-        if (md.getAncestorDraftId() != null) {
-            product.getMetadata().setTags(tagService.getArtifactTags(md.getAncestorDraftId(), userDetails));
+        String id = (md.getAncestorDraftId() == null ? product.getId() : md.getAncestorDraftId());
 
-            List<Reference> referenceForAttr = referenceService.getAllReferenceByPublishedIdAndTypeAndVersionId(
-                    product.getId(), versionId, String.valueOf(ArtifactType.entity_attribute), userDetails);
-            List<String> attrIdList = referenceForAttr.stream().map(r -> r.getEntity().getTargetId())
-                    .collect(Collectors.toList());
-            product.getEntity().setEntityAttributeIds(attrIdList);
+        product.getMetadata().setTags(tagService.getArtifactTags(id, userDetails));
 
-            List<Reference> referenceForIndicator = referenceService.getAllReferenceByPublishedIdAndTypeAndVersionId(
-                    product.getId(), versionId, String.valueOf(ArtifactType.indicator), userDetails);
-            List<String> indicatorIdList = referenceForIndicator.stream().map(r -> r.getEntity().getTargetId())
-                    .collect(Collectors.toList());
-            product.getEntity().setIndicatorIds(indicatorIdList);
+        List<Reference> referenceForAttr = referenceService.getAllReferenceBySourceIdAndTargetType(id,
+                String.valueOf(ArtifactType.entity_attribute), userDetails);
+        List<String> attrIdList = referenceForAttr.stream().map(r -> r.getEntity().getTargetId())
+                .collect(Collectors.toList());
+        product.getEntity().setEntityAttributeIds(attrIdList);
 
-            List<Reference> referenceForPType = referenceService.getAllReferenceByPublishedIdAndTypeAndVersionId(
-                    product.getId(), versionId, String.valueOf(ArtifactType.product_type), userDetails);
-            List<String> ptypeIdList = referenceForPType.stream().map(r -> r.getEntity().getTargetId())
-                    .collect(Collectors.toList());
-            product.getEntity().setProductTypeIds(ptypeIdList);
+        List<Reference> referenceForIndicator = referenceService.getAllReferenceBySourceIdAndTargetType(
+                id, String.valueOf(ArtifactType.indicator), userDetails);
+        List<String> indicatorIdList = referenceForIndicator.stream().map(r -> r.getEntity().getTargetId())
+                .collect(Collectors.toList());
+        product.getEntity().setIndicatorIds(indicatorIdList);
 
-            List<Reference> referenceForPSV = referenceService.getAllReferenceByPublishedIdAndTypeAndVersionId(
-                    product.getId(), versionId, String.valueOf(ArtifactType.product_supply_variant), userDetails);
-            List<String> psvIdList = referenceForPSV.stream().map(r -> r.getEntity().getTargetId())
-                    .collect(Collectors.toList());
-            product.getEntity().setProductSupplyVariantIds(psvIdList);
+        List<Reference> referenceForPType = referenceService.getAllReferenceBySourceIdAndTargetType(
+                id, String.valueOf(ArtifactType.product_type), userDetails);
+        List<String> ptypeIdList = referenceForPType.stream().map(r -> r.getEntity().getTargetId())
+                .collect(Collectors.toList());
+        product.getEntity().setProductTypeIds(ptypeIdList);
 
-            List<Reference> referenceForAsset = referenceService.getAllReferenceByPublishedIdAndTypeAndVersionId(
-                    product.getId(), versionId, String.valueOf(ArtifactType.data_asset), userDetails);
-            List<String> assetIdList = referenceForAsset.stream().map(r -> r.getEntity().getTargetId())
-                    .collect(Collectors.toList());
-            product.getEntity().setDataAssetIds(assetIdList);
-        }
+        List<Reference> referenceForPSV = referenceService.getAllReferenceBySourceIdAndTargetType(
+                id, String.valueOf(ArtifactType.product_supply_variant), userDetails);
+        List<String> psvIdList = referenceForPSV.stream().map(r -> r.getEntity().getTargetId())
+                .collect(Collectors.toList());
+        product.getEntity().setProductSupplyVariantIds(psvIdList);
+
+        List<Reference> referenceForAsset = referenceService.getAllReferenceBySourceIdAndTargetType(
+                id, String.valueOf(ArtifactType.data_asset), userDetails);
+        List<String> assetIdList = referenceForAsset.stream().map(r -> r.getEntity().getTargetId())
+                .collect(Collectors.toList());
+        product.getEntity().setDataAssetIds(assetIdList);
+
+        List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByProduct(id, userDetails);
+        product.getEntity().setDqRules(dqRules);
     }
 
     public Product getProductVersionById(String productId, Integer versionId, UserDetails userDetails)
@@ -564,7 +586,19 @@ public class ProductService extends WorkflowableService<Product> {
             throw new LottabyteException(Message.LBE03105,
                             userDetails.getLanguage(), StringUtils.join(productEntity.getDataAssetIds(), ", "));
 
+
+
         Product current = getProductById(productId, userDetails);
+
+        if (current.getEntity().getDqRules() != null) {
+            for (EntitySampleDQRule rule : current.getEntity().getDqRules()) {
+                boolean isDeleting = productEntity.getDqRules() != null && productEntity.getDqRules().stream().noneMatch(x -> x.getId().equals(rule.getId()));
+                if (isDeleting && dqRuleService.existsInLog(rule.getId(), userDetails)) {
+                    throw new LottabyteException(Message.LBE03206, userDetails.getLanguage());
+                }
+            }
+        }
+
         Integer versionId = current.getEntity().getVersionId();
         versionId++;
         String draftId = null;
@@ -593,14 +627,10 @@ public class ProductService extends WorkflowableService<Product> {
 
             productRepository.createProductDraft(current.getId(), draftId, workflowTaskId, userDetails);
 
-            if (productEntity.getDqRules() != null && !productEntity.getDqRules().isEmpty()) {
-                for (EntitySampleDQRule s : productEntity.getDqRules()) {
-                    productRepository.addDQRule(draftId, s, userDetails);
-                }
+            if (productEntity.getDqRules() != null) {
+                createDQRulesLinks(productEntity.getDqRules(), draftId, productId, userDetails, false);
             } else if (current.getEntity().getDqRules() != null && !current.getEntity().getDqRules().isEmpty()) {
-                for (EntitySampleDQRule s : current.getEntity().getDqRules()) {
-                    productRepository.addDQRule(draftId, s, userDetails);
-                }
+                createDQRulesLinks(current.getEntity().getDqRules(), draftId, productId, userDetails, true);
             }
 
             if (productEntity.getEntityAttributeIds() != null) {
@@ -671,7 +701,7 @@ public class ProductService extends WorkflowableService<Product> {
 
         } else {
             draftId = productId;
-            updateDQRules(productId, productEntity.getDqRules(), current.getEntity().getDqRules(), userDetails);
+            updateDQRulesLinks(productId, ((WorkflowableMetadata) current.getMetadata()).getPublishedId(), productEntity.getDqRules(), current.getEntity().getDqRules(), userDetails);
             if (productEntity.getEntityAttributeIds() != null) {
                 if (current.getEntity().getEntityAttributeIds() != null
                         && !current.getEntity().getEntityAttributeIds().isEmpty()) {
@@ -751,9 +781,10 @@ public class ProductService extends WorkflowableService<Product> {
     private void updateDQRules(String productId, List<EntitySampleDQRule> ids, List<EntitySampleDQRule> currentIds,
             UserDetails userDetails) {
         if (currentIds != null && ids != null) {
-            ids.stream().filter(x -> !EntitySampleService.containsDQRule(currentIds, x)).collect(Collectors.toList())
+            ids.stream().filter(x -> EntitySampleService.containsDQRule(currentIds, x)).forEach(y -> productRepository.updateDQRule(productId, y.getEntity().getDqRuleId(), y, userDetails));
+            ids.stream().filter(x -> !EntitySampleService.containsDQRule(currentIds, x))
                     .forEach(y -> productRepository.addDQRule(productId, y, userDetails));
-            currentIds.stream().filter(x -> !EntitySampleService.containsDQRule(ids, x)).collect(Collectors.toList())
+            currentIds.stream().filter(x -> !EntitySampleService.containsDQRule(ids, x))
                     .forEach(y -> productRepository.removeDQRule(y.getId(), userDetails));
         }
     }
@@ -1050,5 +1081,74 @@ public class ProductService extends WorkflowableService<Product> {
             .limits_internal(product.getEntity().getLimits_internal())
             .roles(product.getEntity().getRoles()).build();
         return sa;
+    }
+
+    public void mergeDQRules(String draftId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
+
+        if (publishedRules != null) {
+            for (EntitySampleDQRule rule : publishedRules) {
+                if (draftRules == null || draftRules.stream().filter(x -> x.getEntity().getAncestorId() != null && x.getEntity().getAncestorId().equals(rule.getId())).count() == 0)
+                    dqRuleService.deleteDQRuleLinkById(rule.getId(), userDetails);
+            }
+        }
+
+        if (draftRules != null) {
+            for (EntitySampleDQRule rule : draftRules) {
+                EntitySampleDQRuleEntity e = new EntitySampleDQRuleEntity();
+                e.setProductId(publishedId);
+                e.setDqRuleId(rule.getEntity().getDqRuleId());
+                e.setPublishedId(publishedId);
+                e.setSettings(rule.getEntity().getSettings());
+                e.setAncestorId(null);
+                e.setSendMail(rule.getEntity().getSendMail());
+                e.setDisabled(rule.getEntity().getDisabled());
+
+                if (rule.getEntity().getAncestorId() != null)
+                    dqRuleService.patchDQRuleLinkById(rule.getEntity().getAncestorId(), new UpdatableEntitySampleDQRule(e), userDetails);
+                else
+                    dqRuleService.createDQRuleLink(e, userDetails);
+            }
+        }
+
+    }
+
+    public void createDQRulesLinks(List<EntitySampleDQRule> dqRules, String productId, String publishedProductId,
+                                   UserDetails userDetails, boolean setAncestorIds) throws LottabyteException {
+        Integer historyId = publishedProductId == null ? 0 : dqRuleService.getLastHistoryIdByPublishedId(publishedProductId, userDetails);
+
+        if (dqRules != null && !dqRules.isEmpty()) {
+            for (EntitySampleDQRule item : dqRules) {
+                EntitySampleDQRuleEntity entity = new EntitySampleDQRuleEntity();
+                entity.setProductId(productId);
+                entity.setDisabled(item.getEntity().getDisabled());
+                entity.setDescription(item.getEntity().getDescription());
+                entity.setDqRuleId(item.getEntity().getDqRuleId());
+                entity.setSettings(item.getEntity().getSettings());
+                entity.setSendMail(item.getEntity().getSendMail());
+                entity.setPublishedId(publishedProductId);
+                entity.setHistoryId(historyId);
+
+                if (setAncestorIds)
+                    entity.setAncestorId(item.getId());
+                else
+                    entity.setAncestorId(item.getEntity().getAncestorId());
+
+                UpdatableEntitySampleDQRule updatableEntitySampleDQRule = new UpdatableEntitySampleDQRule(entity);
+                productRepository.createDQRuleLink(productId, updatableEntitySampleDQRule, userDetails);
+            }
+        }
+    }
+
+    private void updateDQRulesLinks(String productId, String publishedId, List<EntitySampleDQRule> newRules, List<EntitySampleDQRule> currentRules,
+                                    UserDetails userDetails) {
+        if (newRules != null) {
+            newRules.stream().filter(x -> EntitySampleService.containsDQRule(currentRules, x)).forEach(y -> entitySampleRepository.updateDQRuleLink(y.getId(), y, userDetails));
+            newRules.stream().filter(x -> !EntitySampleService.containsDQRule(currentRules, x))
+                    .forEach(y -> productRepository.addDQRuleLink(productId, publishedId, y, userDetails));
+            if (currentRules != null) {
+                currentRules.stream().filter(x -> !EntitySampleService.containsDQRule(newRules, x))
+                        .forEach(y -> entitySampleRepository.removeDQRuleLink(y.getId(), userDetails));
+            }
+        }
     }
 }

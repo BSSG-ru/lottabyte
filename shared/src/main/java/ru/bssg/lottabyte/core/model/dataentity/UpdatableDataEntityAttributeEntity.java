@@ -27,6 +27,7 @@ public class UpdatableDataEntityAttributeEntity extends DataEntityAttributeEntit
         this.setEntityId(fromCopy.getEntityId());
         this.setEnumerationId(fromCopy.getEnumerationId());
         this.setAttributeId(fromCopy.getAttributeId());
+        this.setIsPk(fromCopy.getIsPk());
         if (fromCopy.getMappedSamplePropertyIds() != null) {
             this.setMappedSamplePropertyIds(new ArrayList<>(fromCopy.getMappedSamplePropertyIds()));
         }

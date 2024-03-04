@@ -77,6 +77,8 @@ public class QualityTaskService {
                         new SearchColumn("entity_sample_name", SearchColumn.ColumnType.Text),
                         new SearchColumn("entity_sample_id", SearchColumn.ColumnType.Text),
                         new SearchColumn("is_crontab", SearchColumn.ColumnType.Text),
+                        new SearchColumn("drt.name", SearchColumn.ColumnType.Text),
+                        new SearchColumn("rule_type_name", SearchColumn.ColumnType.Text)
 
         };
 

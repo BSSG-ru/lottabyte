@@ -25,6 +25,10 @@ public class UpdatableEntitySampleDQRule extends EntitySampleDQRuleEntity {
         this.setSendMail(fromCopy.getSendMail());
         this.setEntitySampleId(fromCopy.getEntitySampleId());
         this.setId(fromCopy.getId());
+        this.setPublishedId(fromCopy.getPublishedId());
+        this.setHistoryId(fromCopy.getHistoryId());
+        this.setAncestorId(fromCopy.getAncestorId());
+        this.setAssetId(fromCopy.getAssetId());
     }
 
 }

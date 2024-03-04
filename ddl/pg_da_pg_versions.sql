@@ -666,7 +666,31 @@ CREATE TABLE da_{tenant_id}.entity_sample_to_dq_rule (
 	product_id uuid NULL,
 	send_mail bool NULL DEFAULT true,
 	asset_id uuid NULL,
+      version_id integer NULL,
+      published_id uuid NULL,
+      history_start timestamp NOT NULL,
+      history_end timestamp NOT NULL
 	CONSTRAINT entity_sample_to_dq_rule_pk PRIMARY KEY (id)
+);
+
+CREATE TABLE da_{tenant_id}.entity_sample_to_dq_rule_hist (
+      id uuid NOT NULL,
+      entity_sample_id uuid NULL,
+      dq_rule_id uuid NOT NULL,
+      settings text NULL,
+      created timestamp NOT NULL,
+      creator text NOT NULL,
+      modified timestamp NOT NULL,
+      modifier text NOT NULL,
+      disabled bool NULL DEFAULT false,
+      indicator_id uuid NULL,
+      product_id uuid NULL,
+      send_mail bool NULL DEFAULT true,
+      asset_id uuid NULL,
+      version_id integer NULL,
+      published_id uuid NULL,
+	  history_start timestamp NOT NULL,
+	  history_end timestamp NOT NULL
 );
 
 CREATE TABLE da_{tenant_id}.entity_to_system (
@@ -2053,7 +2077,7 @@ begin
         return new;
    elseif (TG_OP = ''DELETE'') then
         insert into da_{tenant_id}.dq_rule_hist
-        (id, name, rule_ref,  description,
+        (id, name, rule_ref,  description, 
         state, workflow_task_id,  published_id, version_id, history_start, history_end, history_id, 
 		created, creator, modified, modifier, ancestor_draft_id, published_version_id)
         values(old.id, old.name, old.rule_ref, old.description, 
@@ -2385,31 +2409,61 @@ end;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION da_{tenant_id}.entity_sample_to_dq_rule_history()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+declare
+	max_version_id int8;
+begin
+	if (TG_OP = ''UPDATE'') then
+select max(version_id) into max_version_id from da_{tenant_id}.entity_sample_to_dq_rule where id = new.id;
+
+		new.history_start = CURRENT_TIMESTAMP;
+		new.history_end = ''9999-12-30'';
+        new.version_id = max_version_id + 1;
+
+
+insert into da_{tenant_id}.entity_sample_to_dq_rule_hist
+(id, entity_sample_id, dq_rule_id, settings, disabled, indicator_id, product_id, send_mail, asset_id, published_id, history_start, history_end, version_id, created, creator, modified, modifier)
+values(old.id, old.entity_sample_id, old.dq_rule_id, old.settings, old.disabled, old.indicator_id, old.product_id, old.send_mail, old.asset_id, old.published_id, old.history_start, old.history_end, old.version_id, old.created, old.creator, old.modified, old.modifier);
+return new;
+elseif (TG_OP = ''DELETE'') then
+		insert into da_{tenant_id}.entity_sample_to_dq_rule_hist
+		(id, entity_sample_id, dq_rule_id, settings, disabled, indicator_id, product_id, send_mail, asset_id, published_id, history_start, history_end, version_id, created, creator, modified, modifier)
+		VALUES(old.id, old.entity_sample_id, old.dq_rule_id, old.settings, old.disabled, old.indicator_id, old.product_id, old.send_mail, old.asset_id, old.published_id, old.history_start, CURRENT_TIMESTAMP, old.version_id, old.created, old.creator, old.modified, old.modifier);
+return old;
+elseif (TG_OP = ''INSERT'') then
+		new.history_start = CURRENT_TIMESTAMP;
+		new.history_end = ''9999-12-30'';
+return new;
+end if;
+end
+$function$
+;
+
 
 CREATE OR REPLACE FUNCTION da_{tenant_id}.reference_history()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-declare 
-	max_history_id int8;
+declare
 	max_version_id int8;
-begin 
+begin
 	if (TG_OP = ''UPDATE'') then
 		select max(version_id) into max_version_id from da_{tenant_id}.reference where id = new.id;
-		select max(history_id) into max_history_id from da_{tenant_id}.reference where id = new.id;
-		new.history_id = max_history_id + 1;
+
+
 		new.history_start = CURRENT_TIMESTAMP;
 		new.history_end = ''9999-12-30'';
-		if (old.state = ''PUBLISHED'') then
-			new.version_id = max_version_id + 1;
-		end if;
-	
-		insert into da_{tenant_id}.reference_hist 
+        new.version_id = max_version_id + 1;
+
+		insert into da_{tenant_id}.reference_hist
 		(id, source_id, source_artifact_type, target_id, target_artifact_type, reference_type, history_start, history_end, version_id, created, creator, modified, modifier)
 		values(old.id, old.source_id, old.source_artifact_type, old.target_id, old.target_artifact_type, old.reference_type, old.history_start, old.history_end, old.version_id, old.created, old.creator, old.modified, old.modifier);
 		return new;
 	elseif (TG_OP = ''DELETE'') then
-		insert into da_{tenant_id}.reference_hist 
+		insert into da_{tenant_id}.reference_hist
 		(id, source_id, source_artifact_type, target_id, target_artifact_type, reference_type, history_start, history_end, version_id, created, creator, modified, modifier)
 		VALUES(old.id, old.source_id, old.source_artifact_type, old.target_id, old.target_artifact_type, old.reference_type, old.history_start, CURRENT_TIMESTAMP, old.version_id, old.created, old.creator, old.modified, old.modifier);
 		return old;
@@ -2804,5 +2858,14 @@ delete
 update
     on
     da_{tenant_id}.tag_to_artifact for each row execute function da_{tenant_id}.tag_to_artifact_history();
-	 
+
+create trigger entity_sample_to_dq_rule_history_trigger before
+insert
+    or
+delete
+    or
+update
+    on
+    da_{tenant_id}.entity_sample_to_dq_rule for each row execute function da_{tenant_id}.entity_sample_to_dq_rule_history();
+
 	 ', 1);

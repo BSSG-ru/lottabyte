@@ -359,13 +359,15 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
         List<Object> whereValues = searchSQLParts.getWhereValues();
 
         if (where.isEmpty()) {
-            where = " where tbl1.id in (select tbl3.source_id from da_" + userDetails.getTenant()
+            /*where = " where tbl1.id in (select tbl3.source_id from da_" + userDetails.getTenant()
                     + ".reference tbl3 where tbl3.target_id in (select tbl4.id from da_" + userDetails.getTenant()
-                    + ".data_asset tbl4 where tbl4.domain_id='" + domainId + "' LIMIT " + Constants.sqlInLimit + "))";
+                    + ".data_asset tbl4 where tbl4.domain_id='" + domainId + "' LIMIT " + Constants.sqlInLimit + "))";*/
+            where = " where tbl1.domain_id = '" + domainId + "'";
         } else {
-            where = where + " AND tbl1.id in (select tbl3.source_id from da_" + userDetails.getTenant()
+            where = where + " AND tbl1.domain_id = '" + domainId + "'";
+            /*where = where + " AND tbl1.id in (select tbl3.source_id from da_" + userDetails.getTenant()
                     + ".reference tbl3 where tbl3.target_id in (select tbl4.id from da_" + userDetails.getTenant()
-                    + ".data_asset tbl4 where tbl4.domain_id='" + domainId + "' LIMIT " + Constants.sqlInLimit + "))";
+                    + ".data_asset tbl4 where tbl4.domain_id='" + domainId + "' LIMIT " + Constants.sqlInLimit + "))";*/
         }
 
         String subQuery = "select indicator.*, true as has_access, t.tags from da_" + userDetails.getTenant()
@@ -420,7 +422,7 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
     }
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
-    public EntitySampleDQRule createDQRule(String indicatorId,
+    public EntitySampleDQRule createDQRuleLink(String indicatorId,
             UpdatableEntitySampleDQRule entitySampleDQRule, UserDetails userDetails) throws LottabyteException {
         UUID id = entitySampleDQRule.getId() == null ? UUID.randomUUID() : UUID.fromString(entitySampleDQRule.getId());
 
@@ -433,36 +435,34 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
         esp.setModifiedBy(userDetails.getUid());
 
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                + ".entity_sample_to_dq_rule (id, dq_rule_id, settings, created, creator, modified, modifier, disabled, indicator_id, send_mail) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                + ".entity_sample_to_dq_rule (id, dq_rule_id, settings, created, creator, modified, modifier, disabled, indicator_id, send_mail, history_id, published_id, ancestor_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 id, UUID.fromString(entitySampleDQRule.getDqRuleId()),
                 entitySampleDQRule.getSettings(), now, userDetails.getUid(), now, userDetails.getUid(),
                 entitySampleDQRule.getDisabled(),
                 UUID.fromString(indicatorId),
-                entitySampleDQRule.getSendMail());
+                entitySampleDQRule.getSendMail(),
+                entitySampleDQRule.getHistoryId(),
+                UUID.fromString(entitySampleDQRule.getPublishedId()),
+                entitySampleDQRule.getAncestorId() == null ? null : UUID.fromString(entitySampleDQRule.getAncestorId()));
 
         return esp;
     }
 
-    public void removeDQRule(String id, UserDetails userDetails) {
-        String query = "DELETE FROM da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule WHERE id = ?";
-        jdbcTemplate.update(query, UUID.fromString(id));
-    }
-
-    public void addDQRule(String indicatorId,
+    public void addDQRuleLink(String indicatorId, String publishedId,
             EntitySampleDQRule entitySampleDQRule, UserDetails userDetails) {
-        // UUID id = entitySampleDQRule.getId() == null ? UUID.randomUUID() :
-        // UUID.fromString(entitySampleDQRule.getId());
+
         UUID id = UUID.randomUUID();
 
         LocalDateTime now = LocalDateTime.now();
 
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                + ".entity_sample_to_dq_rule (id,  dq_rule_id, settings, created, creator, modified, modifier, disabled,  indicator_id, send_mail) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                + ".entity_sample_to_dq_rule (id,  dq_rule_id, settings, created, creator, modified, modifier, disabled,  indicator_id, send_mail, history_id, published_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 id, UUID.fromString(entitySampleDQRule.getEntity().getDqRuleId()),
                 entitySampleDQRule.getEntity().getSettings(), now, userDetails.getUid(), now, userDetails.getUid(),
                 entitySampleDQRule.getEntity().getDisabled(),
                 UUID.fromString(indicatorId),
-                entitySampleDQRule.getEntity().getSendMail());
+                entitySampleDQRule.getEntity().getSendMail(), entitySampleDQRule.getEntity().getHistoryId(),
+                publishedId == null ? null : UUID.fromString(publishedId));
 
     }
 

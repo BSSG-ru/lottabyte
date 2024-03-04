@@ -79,6 +79,7 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             dataEntityAttributeEntity.setAttributeType(dataEntityAttributeTypeMap(rs.getString("attribute_type")));
             dataEntityAttributeEntity.setEntityId(rs.getString("entity_id"));
             dataEntityAttributeEntity.setAttributeId(rs.getString("attribute_id"));
+            dataEntityAttributeEntity.setIsPk(rs.getBoolean("is_pk"));
 
             Metadata metadata = new Metadata();
             metadata.setId(rs.getString("id"));
@@ -104,6 +105,7 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             dataEntityAttributeEntity.setEntityId(rs.getString("entity_id"));
             dataEntityAttributeEntity.setAttributeId(rs.getString("attribute_id"));
             dataEntityAttributeEntity.setId(rs.getString("id"));
+            dataEntityAttributeEntity.setIsPk(rs.getBoolean("is_pk"));
 
             return dataEntityAttributeEntity;
         }
@@ -198,10 +200,16 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             attributeId = uuidForEntityAttribute.toString();
 
         Timestamp ts = new Timestamp(new java.util.Date().getTime());
+
+        if (newDataEntityAttributeEntity.getIsPk() != null && newDataEntityAttributeEntity.getIsPk()) {
+            jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity_attribute SET is_pk=false, modified=?, modifier=? WHERE entity_id=? AND is_pk",
+                    ts, userDetails.getUid(), entityId == null ? null : UUID.fromString(entityId));
+        }
+
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".\"entity_attribute\"\n" +
-                "(id, attribute_id, \"name\", description, enumeration_id, entity_id, attribute_type, created, creator, modified, modifier)\n"
+                "(id, attribute_id, \"name\", description, enumeration_id, entity_id, attribute_type, created, creator, modified, modifier, is_pk)\n"
                 +
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
                 uuidForEntityAttribute, UUID.fromString(attributeId),
                 newDataEntityAttributeEntity.getName(),
                 newDataEntityAttributeEntity.getDescription(),
@@ -210,7 +218,7 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                         : null),
                 (entityId != null ? UUID.fromString(entityId) : null),
                 newDataEntityAttributeEntity.getAttributeType().name(),
-                ts, userDetails.getUid(), ts, userDetails.getUid());
+                ts, userDetails.getUid(), ts, userDetails.getUid(), newDataEntityAttributeEntity.getIsPk());
         return uuidForEntityAttribute.toString();
     }
 
@@ -264,7 +272,18 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             sets.add("enumeration_id = ?");
             params.add(UUID.fromString(newDataEntityAttributeEntity.getEnumerationId()));
         }
+        if (newDataEntityAttributeEntity.getIsPk() != null) {
+            sets.add("is_pk = ?");
+            params.add(newDataEntityAttributeEntity.getIsPk());
+        }
         if (!sets.isEmpty()) {
+            Timestamp ts = new Timestamp(new java.util.Date().getTime());
+            if (newDataEntityAttributeEntity.getIsPk() != null && newDataEntityAttributeEntity.getIsPk()) {
+                jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity_attribute SET is_pk=false, modified=?, modifier=? WHERE entity_id=(SELECT entity_id FROM da_"
+                        + userDetails.getTenant() + ".entity_attribute WHERE id=?) AND is_pk",
+                        ts, userDetails.getUid(), UUID.fromString(entityAttributeId));
+            }
+
             query += ", " + String.join(",", sets);
             query += " WHERE id = ?";
             params.add(UUID.fromString(entityAttributeId));
@@ -1063,13 +1082,10 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             for (String oldId : targetLinksIds) {
                 UUID newId = UUID.randomUUID();
                 Timestamp ts = new Timestamp(new java.util.Date().getTime());
-                jdbcTemplate.update("insert into da_" + userDetails.getTenant()
-                        + ".entity_attribute_to_sample_property " +
+                jdbcTemplate.update("insert into da_" + userDetails.getTenant() + ".entity_attribute_to_sample_property " +
                         "(id, entity_attribute_id, entity_sample_property_id, name, description, created, creator, modified, modifier) "
-                        +
-                        "select ?, ?, entity_sample_property_id, name, description, created, creator, ?, ? from da_"
-                        + userDetails.getTenant() +
-                        ".entity_attribute_to_sample_property where id = ?",
+                        + "select ?, ?, entity_sample_property_id, name, description, created, creator, ?, ? from da_"
+                        + userDetails.getTenant() + ".entity_attribute_to_sample_property where id = ?",
                         newId, UUID.fromString(targetAttributeId), ts, userDetails.getUid(), UUID.fromString(oldId));
             }
         }
@@ -1093,12 +1109,16 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
         List<GojsModelNodeData> nodes = new ArrayList<>();
         List<GojsModelLinkData> links = new ArrayList<>();
 
-        jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".entity WHERE state='PUBLISHED'",
+        jdbcTemplate.query("SELECT em.*, e.name, (SELECT string_agg(t.name, '%SP%') FROM da_" + userDetails.getTenant()
+                + ".tag t JOIN da_" + userDetails.getTenant() + ".tag_to_artifact ta ON t.id=ta.tag_id AND ta.artifact_id=em.entity_id) AS tag_names, (SELECT string_agg(d.name, '%SP%') FROM da_"
+                + userDetails.getTenant() + ".domain d JOIN da_" + userDetails.getTenant() + ".system_to_domain sd ON sd.domain_id=d.id JOIN da_"
+                + userDetails.getTenant() + ".entity_to_system es ON es.system_id=sd.system_id AND es.entity_id=em.entity_id) AS domain_names FROM da_"
+                + userDetails.getTenant() + ".entity_model em JOIN da_" + userDetails.getTenant() + ".entity e ON em.entity_id=e.id WHERE state='PUBLISHED'",
                 new RowCallbackHandler() {
                     @Override
                     public void processRow(ResultSet rs) throws SQLException {
                         GojsModelNodeData nd = new GojsModelNodeData();
-                        nd.setId(rs.getString("id"));
+                        nd.setId(rs.getString("entity_id"));
                         nd.setName(rs.getString("name"));
                         nd.setType("defaultNodeType");
                         nd.setZOrder(1);
@@ -1108,14 +1128,19 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                         nd.setParentId("");
                         nd.setLoc(rs.getString("loc"));
                         nd.setArtifactType(ArtifactType.entity.getText());
+                        if (rs.getString("tag_names") != null)
+                            nd.setTagNames(rs.getString("tag_names").split("%SP%"));
+                        if (rs.getString("domain_names") != null)
+                            nd.setDomainNames(rs.getString("domain_names").split("%SP%"));
 
                         nodes.add(nd);
                     }
                 });
 
-        jdbcTemplate.query("SELECT ea.* FROM da_" + userDetails.getTenant() + ".entity e JOIN da_"
+        jdbcTemplate.query("SELECT ea.* FROM da_" + userDetails.getTenant() + ".entity_model em JOIN da_"
                 + userDetails.getTenant() + ".entity_attribute ea "
-                + "ON e.id=ea.entity_id WHERE e.state='PUBLISHED'", new RowCallbackHandler() {
+                + "ON em.entity_id=ea.entity_id JOIN da_" + userDetails.getTenant()
+                + ".entity e ON em.entity_id=e.id WHERE e.state='PUBLISHED'", new RowCallbackHandler() {
                     @Override
                     public void processRow(ResultSet rs) throws SQLException {
 
@@ -1131,7 +1156,8 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                         nd.setOrder(1);
                         nd.setDatatype(rs.getString("attribute_type"));
                         nd.setArtifactType(ArtifactType.entity_attribute.getText());
-
+                        nd.setIsPk(rs.getBoolean("is_pk"));
+                        nd.setIsFk(false);
                         nodes.add(nd);
                     }
                 });
@@ -1139,8 +1165,10 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
         jdbcTemplate.query("SELECT r.* FROM da_" + userDetails.getTenant() + ".reference r JOIN da_"
                 + userDetails.getTenant()
                 + ".entity_attribute ea1 ON r.source_id=ea1.id JOIN da_" + userDetails.getTenant()
-                + ".entity e1 ON ea1.entity_id=e1.id JOIN da_" + userDetails.getTenant() + ".entity_attribute ea2"
-                + " ON r.target_id=ea2.id JOIN da_" + userDetails.getTenant() + ".entity e2 ON ea2.entity_id=e2.id "
+                + ".entity_model em1 ON ea1.entity_id=em1.entity_id JOIN da_" + userDetails.getTenant() + ".entity_attribute ea2"
+                + " ON r.target_id=ea2.id JOIN da_" + userDetails.getTenant() + ".entity_model em2 ON ea2.entity_id=em2.entity_id "
+                + " JOIN da_" + userDetails.getTenant() + ".entity e1 ON em1.entity_id=e1.id"
+                + " JOIN da_" + userDetails.getTenant() + ".entity e2 ON em2.entity_id=e2.id"
                 + " WHERE reference_type=? AND e1.state='PUBLISHED' AND e2.state='PUBLISHED'",
                 new RowCallbackHandler() {
                     @Override
@@ -1153,6 +1181,11 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                         ld.setZOrder(1);
 
                         links.add(ld);
+
+                        for (GojsModelNodeData n : nodes) {
+                            if (n.getId().equals(ld.getFrom()))
+                                n.setIsFk(true);
+                        }
                     }
                 }, ReferenceType.ENTITY_ATTRIBUTE_TO_ENTITY_ATTRIBUTE.name());
 
@@ -1165,9 +1198,17 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
 
         if (updatableGojsModelData.getUpdateNodes() != null) {
             for (GojsModelNodeData nodeData : updatableGojsModelData.getUpdateNodes()) {
-                if (nodeData.getIsGroup())
-                    jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity SET loc=? WHERE id=?",
-                            nodeData.getLoc(), UUID.fromString(nodeData.getId()));
+                if (nodeData.getIsGroup()) {
+                    if (jdbcTemplate.queryForObject("SELECT EXISTS(SELECT id FROM da_" + userDetails.getTenant() + ".entity_model WHERE entity_id=?) as exists",
+                            Boolean.class, UUID.fromString(nodeData.getId()))) {
+
+                        jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity_model SET loc=? WHERE entity_id=?",
+                                nodeData.getLoc(), UUID.fromString(nodeData.getId()));
+                    } else {
+                        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".entity_model(id, entity_id, loc) VALUES (?,?,?)",
+                                UUID.randomUUID(), UUID.fromString(nodeData.getId()), nodeData.getLoc());
+                    }
+                }
             }
         }
 
@@ -1184,7 +1225,7 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                             + ".reference SET source_id=?, target_id=?, points=?, modified=?, modifier=?, history_end=? WHERE id=?",
                             UUID.fromString(linkData.getFrom()), UUID.fromString(linkData.getTo()),
                             linkData.getPoints(), ts, userDetails.getUid(), ts, UUID.fromString(linkData.getId()));
-                } else {
+                } else {//
                     jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
                             + ".reference (id, source_id, source_artifact_type, target_id, "
                             + "target_artifact_type, reference_type, created, creator, modified, modifier, history_start, history_end, version_id, published_id, points)"
@@ -1203,6 +1244,13 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             for (String linkId : updatableGojsModelData.getDeleteLinks()) {
                 jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".reference WHERE id=?",
                         UUID.fromString(linkId));
+            }
+        }
+
+        if (updatableGojsModelData.getDeleteNodes() != null) {
+            for (String nodeId : updatableGojsModelData.getDeleteNodes()) {
+                jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".entity_model WHERE entity_id=?",
+                        UUID.fromString(nodeId));
             }
         }
 

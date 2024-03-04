@@ -247,4 +247,8 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
                 Boolean.class, UUID.fromString(domainId), ArtifactState.PUBLISHED.toString());
     }
 
+    public boolean hasChildren(String businessEntityId, UserDetails userDetails) {
+        return jdbcTemplate.queryForObject("SELECT EXISTS(SELECT id FROM da_" + userDetails.getTenant()
+                + ".business_entity WHERE parent_id=?) AS EXISTS", Boolean.class, UUID.fromString(businessEntityId));
+    }
 }

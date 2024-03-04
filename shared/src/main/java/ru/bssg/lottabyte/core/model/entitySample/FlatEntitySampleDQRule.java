@@ -20,6 +20,7 @@ public class FlatEntitySampleDQRule extends FlatModeledObject {
     private boolean disabled;
     private String indicator_id;
     private String product_id;
+    private String asset_id;
     private boolean send_mail;
 
     public FlatEntitySampleDQRule(EntitySampleDQRule entitySampleDQRule) {
@@ -31,5 +32,6 @@ public class FlatEntitySampleDQRule extends FlatModeledObject {
         this.indicator_id = entitySampleDQRule.getEntity().getIndicatorId();
         this.product_id = entitySampleDQRule.getEntity().getProductId();
         this.send_mail = entitySampleDQRule.getEntity().getSendMail();
+        this.asset_id = entitySampleDQRule.getEntity().getAssetId();
     }
 }

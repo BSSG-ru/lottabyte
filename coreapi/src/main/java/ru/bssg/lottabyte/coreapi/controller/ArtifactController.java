@@ -102,7 +102,7 @@ public class ArtifactController {
 
     @Hidden
     @RequestMapping(value = "/model/{artifact_type}/{artifact_id}", method = RequestMethod.PATCH, produces = { "application/json" })
-    @Secured(roles = {"lo_mdl_r", "lo_mdl_u"}, level = ANY_ROLE)
+    @Secured(roles = {"lo_mdl_u"}, level = ANY_ROLE)
     @CrossOrigin
     public ResponseEntity<List<GojsModelNodeData>> updateArtifactModel(@RequestBody UpdatableGojsModelData updatableGojsModelData, @PathVariable("artifact_type") String artifactType,
                                                                        @PathVariable("artifact_id") String artifactId, @RequestHeader HttpHeaders headers) throws LottabyteException {
@@ -116,7 +116,7 @@ public class ArtifactController {
 
     @Hidden
     @RequestMapping(value = "/model", method = RequestMethod.PATCH, produces = { "application/json" })
-    @Secured(roles = {"lo_mdl_r", "lo_mdl_u"}, level = ANY_ROLE)
+    @Secured(roles = {"lo_mdl_u"}, level = ANY_ROLE)
     @CrossOrigin
     public ResponseEntity<List<GojsModelNodeData>> updateModel(@RequestBody UpdatableGojsModelData updatableGojsModelData, @RequestHeader HttpHeaders headers) throws LottabyteException {
         String token = HttpUtils.getToken(headers);

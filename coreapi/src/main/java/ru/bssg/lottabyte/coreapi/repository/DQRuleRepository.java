@@ -18,6 +18,8 @@ import ru.bssg.lottabyte.core.model.dqRule.DQRule;
 import ru.bssg.lottabyte.core.model.dqRule.DQRuleEntity;
 import ru.bssg.lottabyte.core.model.dqRule.FlatDQRule;
 import ru.bssg.lottabyte.core.model.dqRule.UpdatableDQRuleEntity;
+import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
+import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
 import ru.bssg.lottabyte.core.ui.model.*;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.util.ServiceUtils;
@@ -108,6 +110,13 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
                 "SELECT COUNT(id) FROM da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule WHERE dq_rule_id=? "
                         + suffix,
                 Integer.class, UUID.fromString(dqRuleId));
+        return c > 0;
+    }
+
+    public boolean existsInLog(String ruleId, UserDetails userDetails) {
+        Integer c = jdbcTemplate.queryForObject(
+                "SELECT COUNT(id) FROM da_" + userDetails.getTenant() + ".dq_log WHERE rule_id=?",
+                Integer.class, UUID.fromString(ruleId));
         return c > 0;
     }
 
@@ -218,7 +227,7 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
 
         String orderby = searchSQLParts.getOrderBy();
         String where = searchSQLParts.getWhere();
-        String join = searchSQLParts.getJoin();
+        //String join = searchSQLParts.getJoin();
         List<Object> whereValues = searchSQLParts.getWhereValues();
 
         String subQuery = "SELECT d.*, true as has_access FROM da_" + userDetails.getTenant() + ".dq_rule d ";
@@ -257,5 +266,47 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
     public DQRuleType getRuleTypeById(String id, UserDetails userDetails) {
         return jdbcTemplate.queryForObject("SELECT id, name, description FROM da_" + userDetails.getTenant() +
                 ".rule_type WHERE id=?", new RuleTypeRowMapper(), UUID.fromString(id));
+    }
+
+    public Integer getLastHistoryIdByPublishedId(String publishedId, UserDetails userDetails) {
+        Integer historyId = 0;
+        if(publishedId != null) {
+            historyId = jdbcTemplate.queryForObject("SELECT max(history_id) FROM da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule where published_id = ?",
+                    Integer.class, UUID.fromString(publishedId));
+            if(historyId == null)
+                historyId = 0;
+        }
+        return historyId;
+    }
+
+    public void patchDQRuleByIndicatorIdAndRuleId(String indicatorId, String dqRuleId, UpdatableEntitySampleDQRule updatableEntitySampleDQRule, UserDetails userDetails) {
+        jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule SET published_id=?, indicator_id=? WHERE indicator_id=? AND dq_rule_id=?",
+                UUID.fromString(updatableEntitySampleDQRule.getPublishedId()), UUID.fromString(updatableEntitySampleDQRule.getIndicatorId()), UUID.fromString(indicatorId),
+                UUID.fromString(dqRuleId));
+    }
+
+    public void patchDQRuleLinkById(String id, UpdatableEntitySampleDQRule updatableEntitySampleDQRule, UserDetails userDetails) {
+        jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule SET indicator_id=?, product_id=?, asset_id=?, dq_rule_id=?, published_id=?, settings=?, send_mail=?, disabled=? WHERE id=?",
+                updatableEntitySampleDQRule.getIndicatorId() == null ? null : UUID.fromString(updatableEntitySampleDQRule.getIndicatorId()),
+                updatableEntitySampleDQRule.getProductId() == null ? null : UUID.fromString(updatableEntitySampleDQRule.getProductId()),
+                updatableEntitySampleDQRule.getAssetId() == null ? null : UUID.fromString(updatableEntitySampleDQRule.getAssetId()),
+                UUID.fromString(updatableEntitySampleDQRule.getDqRuleId()),
+                UUID.fromString(updatableEntitySampleDQRule.getPublishedId()), updatableEntitySampleDQRule.getSettings(),
+                updatableEntitySampleDQRule.getSendMail(), updatableEntitySampleDQRule.getDisabled(), UUID.fromString(id));
+    }
+
+    public void createDQRuleLink(EntitySampleDQRuleEntity entity, UserDetails userDetails) {
+        Timestamp ts = new Timestamp(new java.util.Date().getTime());
+
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
+            + ".entity_sample_to_dq_rule (id, dq_rule_id, settings, created, creator, modified, modifier, disabled, indicator_id, product_id, send_mail, asset_id, published_id)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", UUID.randomUUID(), UUID.fromString(entity.getDqRuleId()), entity.getSettings(), ts, userDetails.getUid(), ts, userDetails.getUid(),
+                entity.getDisabled(), entity.getIndicatorId() == null ? null : UUID.fromString(entity.getIndicatorId()),
+                entity.getProductId() == null ? null : UUID.fromString(entity.getProductId()), entity.getSendMail(), entity.getAssetId() == null ? null :
+                UUID.fromString(entity.getAssetId()), entity.getPublishedId() == null ? null : UUID.fromString(entity.getPublishedId()));
+    }
+
+    public void deleteDQRuleLinkById(String id, UserDetails userDetails) {
+        jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule WHERE id=?", UUID.fromString(id));
     }
 }

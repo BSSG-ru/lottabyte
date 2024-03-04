@@ -18,11 +18,13 @@ public class FlatDataEntityAttribute extends FlatModeledObject {
     private String entityId;
     private List<String> tags;
     private String attributeId;
+    private Boolean isPk;
 
     public FlatDataEntityAttribute(DataEntityAttribute de) {
         super(de.getFlatModeledObject());
         this.attributeType = de.getEntity().getAttributeType();
         this.entityId = de.getEntity().getEntityId();
         this.attributeId = de.getEntity().getAttributeId();
+        this.isPk = de.getEntity().getIsPk();
     }
 }

@@ -194,6 +194,9 @@ public class QualityTaskRepository extends GenericArtifactRepository<QualityTask
             task.setEntitySampleId(rs.getString("entity_sample_id"));
             task.setEntitySampleName(rs.getString("entity_sample_name"));
             task.setIsCrontab(rs.getString("is_crontab"));
+            task.setStatus(rs.getString("status"));
+            task.setRuleTypeId(rs.getString("rule_type_id"));
+            task.setRuleTypeName(rs.getString("rule_type_name"));
 
             return task;
         }

@@ -122,6 +122,10 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
             espEntity.setDqRuleId(rs.getString("dq_rule_id"));
             espEntity.setDisabled(rs.getBoolean("disabled"));
             espEntity.setSendMail(rs.getBoolean("send_mail"));
+            espEntity.setHistoryId(rs.getInt("history_id"));
+            espEntity.setPublishedId(rs.getString("published_id"));
+            espEntity.setIndicatorId(rs.getString("indicator_id"));
+            espEntity.setAncestorId(rs.getString("ancestor_id"));
 
             Metadata md = new Metadata();
             md.setId(rs.getString("id"));
@@ -1038,5 +1042,18 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
     public List<String> getDomainIdsBySystemId(String systemId, UserDetails userDetails) {
         return jdbcTemplate.queryForList("SELECT domain_id FROM da_" + userDetails.getTenant()
                 + ".system_to_domain sd WHERE sd.system_id=?", String.class, UUID.fromString(systemId));
+    }
+
+    public void updateDQRuleLink(String id, EntitySampleDQRule entitySampleDQRule, UserDetails userDetails) {
+        LocalDateTime now = LocalDateTime.now();
+
+        jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule SET settings=?, modified=?, modifier=?, disabled=?, send_mail=? WHERE id=?",
+                entitySampleDQRule.getEntity().getSettings(), now, userDetails.getUid(), entitySampleDQRule.getEntity().getDisabled(),
+                entitySampleDQRule.getEntity().getSendMail(), UUID.fromString(id));
+    }
+
+    public void removeDQRuleLink(String id, UserDetails userDetails) {
+        String query = "DELETE FROM da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule WHERE id = ?";
+        jdbcTemplate.update(query, UUID.fromString(id));
     }
 }

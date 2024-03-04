@@ -59,6 +59,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
             new SearchColumn("be_links", SearchColumn.ColumnType.Text),
             new SearchColumn("domain_id", SearchColumn.ColumnType.UUID),
             new SearchColumn("domain.name", SearchColumn.ColumnType.Text),
+            new SearchColumn("domain_name", SearchColumn.ColumnType.Text),
             new SearchColumn("parent_id", SearchColumn.ColumnType.UUID)
     };
 
@@ -160,6 +161,9 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
                     Message.LBE03006,
                             userDetails.getLanguage(),
                     serviceArtifactType, draftBusinessEntityId);
+        if (businessEntityRepository.hasChildren(publishedId, userDetails))
+            throw new LottabyteException(Message.LBE02505, userDetails.getLanguage(), publishedId);
+
         businessEntityRepository.setStateById(businessEntity.getId(), ArtifactState.DRAFT_HISTORY,
                 userDetails);
         businessEntityRepository.setStateById(publishedId, ArtifactState.REMOVED, userDetails);
@@ -428,6 +432,12 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
             throws LottabyteException {
         BusinessEntity current = getBusinessEntityById(businessEntityId, userDetails);
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+
+            if (businessEntityRepository.hasChildren(businessEntityId, userDetails)) {
+                throw new LottabyteException(Message.LBE02505,
+                        userDetails.getLanguage(), businessEntityId);
+            }
+
             String draftId = businessEntityRepository.getDraftId(businessEntityId, userDetails);
             if (draftId != null && !draftId.isEmpty())
                 throw new LottabyteException(

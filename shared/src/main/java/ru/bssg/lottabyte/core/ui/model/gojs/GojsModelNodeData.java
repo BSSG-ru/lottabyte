@@ -25,4 +25,8 @@ public class GojsModelNodeData {
     private String text;        //отображаемое наименование
     private Integer order;      //для атрибутов можно задать порядок отображения в списке в диаграмме
     private String datatype;    //тип атрибута
+    private Boolean isPk;
+    private Boolean isFk;
+    private String[] domainNames;
+    private String[] tagNames;
 }

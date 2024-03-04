@@ -34,6 +34,9 @@ public class FlatQualityRuleTask extends FlatModeledObject {
     private String entitySampleId;
     private String entitySampleName;
     private String isCrontab;
+    private String status;
+    private String ruleTypeId;
+    private String ruleTypeName;
 
     public FlatQualityRuleTask(QualityRuleTask d) {
         super(d.getFlatModeledObject());
@@ -55,6 +58,8 @@ public class FlatQualityRuleTask extends FlatModeledObject {
         this.entitySampleId = d.getEntity().getEntitySampleId();
         this.entitySampleName = d.getEntity().getEntitySampleName();
         this.isCrontab = d.getEntity().getIsCrontab();
-
+        this.status = d.getEntity().getStatus();
+        this.ruleTypeId = d.getEntity().getRuleTypeId();
+        this.ruleTypeName = d.getEntity().getRuleTypeName();
     }
 }

@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.dataasset.DataAsset;
@@ -13,6 +15,7 @@ import ru.bssg.lottabyte.core.model.dataasset.DataAssetEntity;
 import ru.bssg.lottabyte.core.model.dataasset.FlatDataAsset;
 import ru.bssg.lottabyte.core.model.dataasset.UpdatableDataAssetEntity;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
+import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
 import ru.bssg.lottabyte.core.ui.model.*;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.util.ServiceUtils;
@@ -329,4 +332,56 @@ public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
 
     }
 
+    public void updateDQRule(String assetId, String ruleId, EntitySampleDQRule entitySampleDQRule, UserDetails userDetails) {
+        LocalDateTime now = LocalDateTime.now();
+
+        jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity_sample_to_dq_rule SET settings=?, modified=?, modifier=?, disabled=?, send_mail=? WHERE dq_rule_id=? AND asset_id=?",
+                entitySampleDQRule.getEntity().getSettings(), now, userDetails.getUid(), entitySampleDQRule.getEntity().getDisabled(),
+                entitySampleDQRule.getEntity().getSendMail(), UUID.fromString(ruleId), UUID.fromString(assetId));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public EntitySampleDQRule createDQRuleLink(String dataAssetId,
+                                               UpdatableEntitySampleDQRule entitySampleDQRule, UserDetails userDetails) throws LottabyteException {
+        UUID id = entitySampleDQRule.getId() == null ? UUID.randomUUID() : UUID.fromString(entitySampleDQRule.getId());
+
+        EntitySampleDQRule esp = new EntitySampleDQRule(entitySampleDQRule);
+        esp.setId(id.toString());
+        LocalDateTime now = LocalDateTime.now();
+        esp.setCreatedAt(now);
+        esp.setModifiedAt(now);
+        esp.setCreatedBy(userDetails.getUid());
+        esp.setModifiedBy(userDetails.getUid());
+
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
+                        + ".entity_sample_to_dq_rule (id, dq_rule_id, settings, created, creator, modified, modifier, disabled, asset_id, send_mail, history_id, published_id, ancestor_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                id, UUID.fromString(entitySampleDQRule.getDqRuleId()),
+                entitySampleDQRule.getSettings(), now, userDetails.getUid(), now, userDetails.getUid(),
+                entitySampleDQRule.getDisabled(),
+                UUID.fromString(dataAssetId),
+                entitySampleDQRule.getSendMail(),
+                entitySampleDQRule.getHistoryId(),
+                UUID.fromString(entitySampleDQRule.getPublishedId()),
+                entitySampleDQRule.getAncestorId() == null ? null : UUID.fromString(entitySampleDQRule.getAncestorId()));
+
+        return esp;
+    }
+
+    public void addDQRuleLink(String dataAssetId, String publishedId,
+                              EntitySampleDQRule entitySampleDQRule, UserDetails userDetails) {
+
+        UUID id = UUID.randomUUID();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
+                        + ".entity_sample_to_dq_rule (id,  dq_rule_id, settings, created, creator, modified, modifier, disabled, asset_id, send_mail, history_id, published_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                id, UUID.fromString(entitySampleDQRule.getEntity().getDqRuleId()),
+                entitySampleDQRule.getEntity().getSettings(), now, userDetails.getUid(), now, userDetails.getUid(),
+                entitySampleDQRule.getEntity().getDisabled(),
+                UUID.fromString(dataAssetId),
+                entitySampleDQRule.getEntity().getSendMail(), entitySampleDQRule.getEntity().getHistoryId(),
+                publishedId == null ? null : UUID.fromString(publishedId));
+
+    }
 }

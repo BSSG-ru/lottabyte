@@ -17,6 +17,8 @@ import ru.bssg.lottabyte.core.model.dqRule.DQRule;
 import ru.bssg.lottabyte.core.model.dqRule.FlatDQRule;
 import ru.bssg.lottabyte.core.model.dqRule.SearchableDQRule;
 import ru.bssg.lottabyte.core.model.dqRule.UpdatableDQRuleEntity;
+import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
+import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowTask;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowType;
@@ -65,6 +67,10 @@ public class DQRuleService extends WorkflowableService<DQRule> {
         this.tagService = tagService;
         this.elasticsearchService = elasticsearchService;
         this.workflowService = workflowService;
+    }
+
+    public boolean existsInLog(String ruleId, UserDetails userDetails) throws LottabyteException {
+        return dqRuleRepository.existsInLog(ruleId, userDetails);
     }
 
     // Wf interface
@@ -255,6 +261,18 @@ public class DQRuleService extends WorkflowableService<DQRule> {
         return dqRule;
     }
 
+    public void patchDQRuleByIndicatorIdAndRuleId(String indicatorId, String dqRuleId, UpdatableEntitySampleDQRule updatableEntitySampleDQRule, UserDetails userDetails) {
+        dqRuleRepository.patchDQRuleByIndicatorIdAndRuleId(indicatorId, dqRuleId, updatableEntitySampleDQRule, userDetails);
+    }
+
+    public void patchDQRuleLinkById(String id, UpdatableEntitySampleDQRule updatableEntitySampleDQRule, UserDetails userDetails) {
+        dqRuleRepository.patchDQRuleLinkById(id, updatableEntitySampleDQRule, userDetails);
+    }
+
+    public void createDQRuleLink(EntitySampleDQRuleEntity entity, UserDetails userDetails) {
+        dqRuleRepository.createDQRuleLink(entity, userDetails);
+    }
+
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public DQRule updateDQRule(String dqRuleId, UpdatableDQRuleEntity dqRuleEntity, UserDetails userDetails)
             throws LottabyteException {
@@ -429,5 +447,13 @@ public class DQRuleService extends WorkflowableService<DQRule> {
 
     public DQRuleType getRuleTypeById(String id, UserDetails userDetails) {
         return dqRuleRepository.getRuleTypeById(id, userDetails);
+    }
+
+    public Integer getLastHistoryIdByPublishedId(String publishedId, UserDetails userDetails) {
+        return dqRuleRepository.getLastHistoryIdByPublishedId(publishedId, userDetails);
+    }
+
+    public void deleteDQRuleLinkById(String id, UserDetails userDetails) {
+        dqRuleRepository.deleteDQRuleLinkById(id, userDetails);
     }
 }
