@@ -55,6 +55,11 @@ public class WorkflowableMetadata extends Metadata {
             if(rs.getObject("ancestor_draft_id") != null)
                 this.setAncestorDraftId(rs.getString("ancestor_draft_id"));
         }catch(SQLException ignored){}
+        try {
+            this.setModifierDisplayName(rs.getString("modifier_display_name"));
+            this.setModifierDescription(rs.getString("modifier_description"));
+            this.setModifierEmail(rs.getString("modifier_email"));
+        } catch (SQLException ignored) {}
     }
 
 }

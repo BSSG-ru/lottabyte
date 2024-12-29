@@ -23,6 +23,8 @@ import ru.bssg.lottabyte.core.model.dataasset.DataAsset;
 import ru.bssg.lottabyte.core.model.dataasset.FlatDataAsset;
 import ru.bssg.lottabyte.core.model.dataasset.UpdatableDataAssetEntity;
 import ru.bssg.lottabyte.core.model.dataentity.FlatDataEntity;
+import ru.bssg.lottabyte.core.model.domain.Domain;
+import ru.bssg.lottabyte.core.model.system.System;
 import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
 import ru.bssg.lottabyte.core.ui.model.SearchResponse;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
@@ -186,7 +188,7 @@ public class DataAssetController {
             @RequestHeader HttpHeaders headers) throws LottabyteException {
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
-        return new ResponseEntity<>(dataAssetService.patchDataAsset(dataAssetId, dataAssetEntity, userDetails), HttpStatus.OK);
+        return new ResponseEntity<>(dataAssetService.patchDataAsset(dataAssetId, dataAssetEntity, false, userDetails), HttpStatus.OK);
     }
 
     @Operation(
@@ -265,7 +267,7 @@ public class DataAssetController {
     public ResponseEntity<PaginatedArtifactList<DataAsset>> getDataAssetVersionsById(
             @PathVariable("asset_id") String assetId,
             @Parameter(description = "The maximum number of Data Asset versions to return - must be at least 1 and cannot exceed 200. The default value is 10.")
-            @RequestParam(value="limit", defaultValue = "10") Integer limit,
+            @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
@@ -298,5 +300,81 @@ public class DataAssetController {
             @PathVariable("version_id") Integer versionId,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
         return ResponseEntity.ok(dataAssetService.getDataAssetVersionById(dataAssetId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+    }
+
+    @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Restores Asset version by given guid and version id.", description = "This method can be used to restore Asset history version by given guid and version id.", operationId = "restoreDataAssetVersionById")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Operation successfully"),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "Asset version not found"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/{asset_id}/versions/{version_id}/restore", method = RequestMethod.POST, produces = {
+            "application/json" })
+    @Secured(roles = { "active_u" }, level = ANY_ROLE)
+    public ResponseEntity<DataAsset> restoreDataAssetVersionById(
+            @Parameter(description = "ID of the Asset", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("asset_id") String assetId,
+            @Parameter(description = "Version ID of the Asset", example = "1") @PathVariable("version_id") Integer versionId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+        return ResponseEntity.ok(dataAssetService.restoreDataAssetVersionById(assetId, versionId,
+                jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Archives Data asset by given guid.",
+            description = "This method can be used to archive Data asset by given guid.",
+            operationId = "archiveDataAsset"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Data asset has been archived successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/archive/{asset_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"active_r", "active_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<?> archiveDataAsset(
+            @Parameter(description = "ID of the Data asset",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("asset_id") String assetId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        DataAsset result = dataAssetService.archiveDataAssetById(assetId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        if (result == null) {
+            ArchiveResponse resp = new ArchiveResponse();
+            resp.setDeletedGuids(Collections.singletonList(assetId));
+            return ResponseEntity.ok(resp);
+        } else {
+            return ResponseEntity.ok(result);
+        }
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Restores Data asset by given guid.",
+            description = "This method can be used to restore Data asset by given guid.",
+            operationId = "restoreDataAsset"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Data asset has been restored successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/restore/{asset_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"active_r", "active_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<DataAsset> restoreDataAsset(
+            @Parameter(description = "ID of the Data asset",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("asset_id") String assetId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        DataAsset result = dataAssetService.restoreDataAssetById(assetId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        return new ResponseEntity<>(result, HttpStatus.OK);
     }
 }

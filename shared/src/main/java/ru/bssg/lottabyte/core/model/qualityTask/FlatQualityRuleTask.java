@@ -34,6 +34,7 @@ public class FlatQualityRuleTask extends FlatModeledObject {
     private String entitySampleId;
     private String entitySampleName;
     private String isCrontab;
+    private String isCrontabText;
     private String status;
     private String ruleTypeId;
     private String ruleTypeName;

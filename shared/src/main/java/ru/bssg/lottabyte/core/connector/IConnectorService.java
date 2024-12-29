@@ -26,4 +26,6 @@ public interface IConnectorService {
                                          UserDetails userDetails)
             throws LottabyteException, SQLException, ClassNotFoundException;
 
+
+
 }

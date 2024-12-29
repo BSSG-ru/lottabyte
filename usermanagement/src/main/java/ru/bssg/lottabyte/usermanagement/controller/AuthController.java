@@ -126,16 +126,19 @@ public class AuthController {
             if (!passwordEncoder.matches(loginRequest.getPassword(), userDetails.getPassword()))
                 return new ResponseEntity(new ApiResponseMessage(false, MessageConstants.USERNAME_OR_PASSWORD_INVALID), HttpStatus.BAD_REQUEST);
         } else {
-            log.info("Пользователь " + loginRequest.getUsername() + " проверяется в LDAP");
+            String username = loginRequest.getUsername();
+            if (username.contains("@"))
+                username = username.substring(0, username.indexOf('@'));
+            log.info("Пользователь " + username + " проверяется в LDAP");
             TenantLdapConfig tenantLdapConfig = tenantService.getTenantLdapConfig(tenant);
             if (tenantLdapConfig == null)
                 return new ResponseEntity<>(new ApiResponseMessage(false, MessageConstants.NO_LDAP_CONFIGURATION), HttpStatus.BAD_REQUEST);
-            userDetails = authenticateLdap(loginRequest.getUsername(), loginRequest.getPassword(), tenantLdapConfig, tenant);
+            userDetails = authenticateLdap(username, loginRequest.getPassword(), tenantLdapConfig, tenant);
             if (userDetails == null)
                 return new ResponseEntity<>(new ApiResponseMessage(false, MessageConstants.USER_NOT_FOUND_IN_LDAP), HttpStatus.BAD_REQUEST);
         }
         userDetails.setLanguage(loginRequest.getLanguage() == null ? Language.en : loginRequest.getLanguage());
-        log.info("CLAIM " + userDetails.getUserDomains().size());
+        log.info("CLAIM " + userDetails.getStewardDomains().size());
         String jwt = jwtHelper.createJwtForClaims(userDetails);
         return ResponseEntity.ok(new JwtAuthenticationResponse(jwt));
     }

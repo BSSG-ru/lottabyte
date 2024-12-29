@@ -21,10 +21,12 @@ import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.connector.Connector;
 import ru.bssg.lottabyte.core.model.connector.ConnectorParam;
 import ru.bssg.lottabyte.core.model.dataentity.DataEntity;
+import ru.bssg.lottabyte.core.model.dataentity.DataEntityAttribute;
 import ru.bssg.lottabyte.core.model.entityQuery.EntityQuery;
 import ru.bssg.lottabyte.core.model.entityQuery.EntityQueryResult;
 import ru.bssg.lottabyte.core.model.entityQuery.FlatEntityQuery;
 import ru.bssg.lottabyte.core.model.entitySample.*;
+import ru.bssg.lottabyte.core.model.task.TaskSchedule;
 import ru.bssg.lottabyte.core.model.task.TaskState;
 import ru.bssg.lottabyte.core.ui.model.*;
 import ru.bssg.lottabyte.core.model.system.System;
@@ -40,10 +42,13 @@ import ru.bssg.lottabyte.coreapi.config.ApplicationConfig;
 import ru.bssg.lottabyte.coreapi.repository.*;
 import ru.bssg.lottabyte.coreapi.repository.impl.EntitySampleBodyS3RepositoryImpl;
 import ru.bssg.lottabyte.coreapi.service.connector.ConnectorFactory;
+import ru.bssg.lottabyte.coreapi.service.connector.GenericJDBCConnectorServiceImpl;
 import ru.bssg.lottabyte.coreapi.util.AllValidator;
 import ru.bssg.lottabyte.coreapi.util.Helper;
 import ru.bssg.lottabyte.coreapi.util.IValidator;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.util.*;
@@ -71,6 +76,9 @@ public class EntitySampleService {
         private final EntitySampleBodyService entitySampleBodyService;
         private final DomainRepository domainRepository;
         private final RatingService ratingService;
+        private final MetadataService metadataService;
+        private final ReferenceService referenceService;
+        private final UserFavService userFavService;
 
         private final SearchColumn[] searchableColumns = {
                         new SearchColumn("name", SearchColumn.ColumnType.Text),
@@ -129,7 +137,10 @@ public class EntitySampleService {
                         CommentService commentService,
                         DomainRepository domainRepository,
                         SystemRepository systemRepository,
-                        RatingService ratingService) {
+                        RatingService ratingService,
+                        MetadataService metadataService,
+                        ReferenceService referenceService,
+                        UserFavService userFavService) {
                 this.entitySampleRepository = entitySampleRepository;
                 this.elasticsearchService = elasticsearchService;
                 this.entityService = entityService;
@@ -149,21 +160,24 @@ public class EntitySampleService {
                 this.domainRepository = domainRepository;
                 this.systemRepository = systemRepository;
                 this.ratingService = ratingService;
+                this.metadataService = metadataService;
+                this.referenceService = referenceService;
+                this.userFavService = userFavService;
         }
 
         public boolean existSamplesInSystem(String systemId, UserDetails userDetails) {
                 return entitySampleRepository.existSamplesInSystem(systemId, userDetails);
         }
 
-        public TaskRun createTaskRunBeforeRequest(String taskId, UserDetails userDetails) throws LottabyteException {
-                List<TaskRun> taskRunListToCheck = taskRunService.getTaskRunListByTaskId(taskId, userDetails);
+        public TaskRun createTaskRunBeforeRequest(String taskScheduleId, UserDetails userDetails) throws LottabyteException {
+                List<TaskRun> taskRunListToCheck = taskRunService.getTaskRunListByTaskScheduleId(taskScheduleId, userDetails);
                 if (!taskRunListToCheck.isEmpty())
                         throw new LottabyteException(
                                         Message.LBE01502,
-                                                        userDetails.getLanguage(), taskId);
+                                                        userDetails.getLanguage(), taskScheduleId);
 
                 UpdatableTaskRunEntity updatableTaskRunEntity = new UpdatableTaskRunEntity();
-                updatableTaskRunEntity.setTaskId(taskId);
+                updatableTaskRunEntity.setTaskScheduleId(taskScheduleId);
                 updatableTaskRunEntity.setStaredBy(userDetails.getUid());
                 updatableTaskRunEntity.setTaskStart(new Timestamp(new Date().getTime()).toLocalDateTime());
                 updatableTaskRunEntity.setTaskState(TaskState.STARTED.getText());
@@ -173,7 +187,7 @@ public class EntitySampleService {
         }
 
         @Async("asyncExecutor")
-        public void workWithConnectors(String taskId, TaskRun taskRun, UserDetails userDetails)
+        public void workWithConnectors(String taskScheduleId, TaskRun taskRun, UserDetails userDetails)
                         throws LottabyteException {
                 UpdatableTaskRunEntity updatableTaskRunEntity = new UpdatableTaskRunEntity();
                 String entitySampleId = null;
@@ -183,138 +197,160 @@ public class EntitySampleService {
 
                         EntityQueryResult entityQueryResult = null;
 
-                        Task task = taskService.getTaskById(taskId, userDetails);
+                        TaskSchedule taskSchedule = taskService.getTaskScheduleById(taskScheduleId, userDetails);
+                        if (taskSchedule == null)
+                                throw new LottabyteException(
+                                        Message.LBE01410, userDetails.getLanguage(), taskScheduleId);
+
+                        Task task = taskService.getTaskById(taskSchedule.getEntity().getTaskId(), userDetails);
                         if (task == null)
                                 throw new LottabyteException(
-                                                Message.LBE01401, userDetails.getLanguage(), taskId);
+                                                Message.LBE01401, userDetails.getLanguage(), taskSchedule.getEntity().getTaskId());
 
-                        EntityQuery entityQuery = entityQueryService.getEntityQueryById(task.getEntity().getQueryId(),
-                                        userDetails);
-                        if (entityQuery == null)
-                                throw new LottabyteException(Message.LBE00005,
-                                                                userDetails.getLanguage(),
-                                                                task.getEntity().getQueryId());
+                        /*if (task.getEntity().getIsMetadataTask()) {
 
-                        DataEntity dataEntity = entityService.getDataEntityById(entityQuery.getEntity().getEntityId(),
-                                        userDetails);
-                        if (dataEntity == null)
-                                throw new LottabyteException(Message.LBE00301,
-                                                                userDetails.getLanguage(),
-                                                                entityQuery.getEntity().getEntityId());
+                        } else*/
+                        {
+                                EntityQuery entityQuery = null;
+                                DataEntity dataEntity = null;
+                                System system = null;
 
-                        SystemConnection systemConnection = systemConnectionService
+                                SystemConnection systemConnection = systemConnectionService
                                         .getSystemConnectionById(task.getEntity().getSystemConnectionId(), userDetails);
-                        if (systemConnection == null)
-                                throw new LottabyteException(Message.LBE01201,
-                                                                userDetails.getLanguage(),
-                                                                task.getEntity().getSystemConnectionId());
+                                if (systemConnection == null)
+                                        throw new LottabyteException(Message.LBE01201,
+                                                userDetails.getLanguage(),
+                                                task.getEntity().getSystemConnectionId());
 
-                        System system = systemService.getSystemById(systemConnection.getEntity().getSystemId(),
-                                        userDetails);
-                        if (system == null)
-                                throw new LottabyteException(Message.LBE00904,
-                                                                userDetails.getLanguage(),
-                                                                systemConnection.getEntity().getSystemId());
+                                if (!task.getEntity().getIsMetadataTask()) {
+                                        entityQuery = entityQueryService.getEntityQueryById(task.getEntity().getQueryId(),
+                                                userDetails);
+                                        if (entityQuery == null)
+                                                throw new LottabyteException(Message.LBE00005,
+                                                        userDetails.getLanguage(),
+                                                        task.getEntity().getQueryId());
 
-                        Connector connector = connectorService.getConnectorById(
+                                        dataEntity = entityService.getDataEntityById(entityQuery.getEntity().getEntityId(),
+                                                userDetails);
+                                        if (dataEntity == null)
+                                                throw new LottabyteException(Message.LBE00301,
+                                                        userDetails.getLanguage(),
+                                                        entityQuery.getEntity().getEntityId());
+
+                                        system = systemService.getSystemById(systemConnection.getEntity().getSystemId(),
+                                                userDetails);
+                                        if (system == null)
+                                                throw new LottabyteException(Message.LBE00904,
+                                                        userDetails.getLanguage(),
+                                                        systemConnection.getEntity().getSystemId());
+                                }
+
+                                Connector connector = connectorService.getConnectorById(
                                         systemConnection.getEntity().getConnectorId(),
                                         userDetails);
-                        if (connector == null)
-                                throw new LottabyteException(Message.LBE01101,
-                                                                userDetails.getLanguage(),
-                                                                systemConnection.getEntity().getConnectorId());
+                                if (connector == null)
+                                        throw new LottabyteException(Message.LBE01101,
+                                                userDetails.getLanguage(),
+                                                systemConnection.getEntity().getConnectorId());
 
-                        IConnectorService iConnectorService = factory.getConnector(
+                                IConnectorService iConnectorService = factory.getConnector(
                                         Objects.requireNonNull(
-                                                        ConnectorType.fromString(connector.getEntity().getName())),
+                                                ConnectorType.fromString(connector.getEntity().getName())),
                                         userDetails);
 
-                        updatableTaskRunEntity = new UpdatableTaskRunEntity();
-                        updatableTaskRunEntity.setTaskState(TaskState.RUNNING.getText());
-                        taskRunService.updateTaskRunById(taskRun.getId(), updatableTaskRunEntity, userDetails);
+                                updatableTaskRunEntity = new UpdatableTaskRunEntity();
+                                updatableTaskRunEntity.setTaskState(TaskState.RUNNING.getText());
+                                taskRunService.updateTaskRunById(taskRun.getId(), updatableTaskRunEntity, userDetails);
 
-                        List<ConnectorParam> connectorParamList = connectorService
+                                List<ConnectorParam> connectorParamList = connectorService
                                         .getConnectorParamsList(systemConnection.getEntity().getConnectorId(),
-                                                        userDetails);
-                        if (connectorParamList == null || connectorParamList.isEmpty())
-                                throw new LottabyteException(Message.LBE00007,
-                                                                userDetails.getLanguage(),
-                                                                systemConnection.getEntity().getConnectorId());
+                                                userDetails);
+                                if (connectorParamList == null || connectorParamList.isEmpty())
+                                        throw new LottabyteException(Message.LBE00007,
+                                                userDetails.getLanguage(),
+                                                systemConnection.getEntity().getConnectorId());
 
-                        List<SystemConnectionParam> systemConnectionParamList = systemConnectionService
+                                List<SystemConnectionParam> systemConnectionParamList = systemConnectionService
                                         .getSystemConnectionParamsList(systemConnection.getId(), userDetails);
-                        if (systemConnectionParamList == null || systemConnectionParamList.isEmpty())
-                                throw new LottabyteException(Message.LBE01202,
-                                                                userDetails.getLanguage(),
-                                                                systemConnection.getId());
+                                if (systemConnectionParamList == null || systemConnectionParamList.isEmpty())
+                                        throw new LottabyteException(Message.LBE01202,
+                                                userDetails.getLanguage(),
+                                                systemConnection.getId());
 
-                        entityQueryResult = iConnectorService.querySystem(connector, connectorParamList, system,
-                                        dataEntity,
-                                        entityQuery, systemConnection, systemConnectionParamList, userDetails);
+                                if (task.getEntity().getIsMetadataTask() && iConnectorService instanceof GenericJDBCConnectorServiceImpl) {
+                                        ((GenericJDBCConnectorServiceImpl)iConnectorService).queryMetaData(task, connector, connectorParamList, systemConnection, systemConnectionParamList, userDetails, metadataService, elasticsearchService, referenceService);
+                                } else {
+                                        entityQueryResult = iConnectorService.querySystem(connector, connectorParamList, system,
+                                                dataEntity,
+                                                entityQuery, systemConnection, systemConnectionParamList, userDetails);
 
-                        if (entityQueryResult.getTextSampleBody() == null
-                                        || entityQueryResult.getTextSampleBody().isEmpty())
-                                throw new LottabyteException(Message.LBE01602,
-                                                userDetails.getLanguage());
+                                        if (entityQueryResult.getTextSampleBody() == null
+                                                || entityQueryResult.getTextSampleBody().isEmpty())
+                                                throw new LottabyteException(Message.LBE01602,
+                                                        userDetails.getLanguage());
 
-                        List<EntitySampleProperty> entitySamplePropertyFromTableList = getEntitySamplePropertiesFromTable(
-                                        entityQueryResult.getTextSampleBody());
+                                        List<EntitySampleProperty> entitySamplePropertyFromTableList = getEntitySamplePropertiesFromTable(
+                                                entityQueryResult.getTextSampleBody());
 
-                        EntitySample currentEntitySample = getEntitySampleByQueryId(entityQuery.getId(), true,
-                                        userDetails);
-                        if (currentEntitySample != null) {
-                                if (!currentEntitySample.getEntity().getSampleBody()
-                                                .equals(entityQueryResult.getTextSampleBody())) {
-                                        List<EntitySampleProperty> entitySamplePropertyList = getSamplesPropertiesList(
-                                                        currentEntitySample.getId(), userDetails);
-                                        boolean updateProperties = false;
-                                        for (EntitySampleProperty entitySamplePropertyFromJdbc : entitySamplePropertyFromTableList) {
-                                                if (entitySamplePropertyList.stream()
-                                                                .filter(entitySampleProperty -> entitySamplePropertyFromJdbc
-                                                                                .getEntity().getPath()
-                                                                                .equals(entitySampleProperty.getEntity()
+                                        EntitySample currentEntitySample = getEntitySampleByQueryId(entityQuery.getId(), true,
+                                                userDetails);
+                                        if (currentEntitySample != null) {
+                                                //if (!currentEntitySample.getEntity().getSampleBody().equals(entityQueryResult.getTextSampleBody()))
+                                                {
+                                                        List<EntitySampleProperty> entitySamplePropertyList = getSamplesPropertiesList(
+                                                                currentEntitySample.getId(), userDetails);
+                                                        boolean updateProperties = (entitySamplePropertyList.size() != entitySamplePropertyFromTableList.size());
+                                                        if (!updateProperties) {
+                                                                for (EntitySampleProperty entitySamplePropertyFromJdbc : entitySamplePropertyFromTableList) {
+                                                                        if (entitySamplePropertyList.stream()
+                                                                                .filter(entitySampleProperty -> entitySamplePropertyFromJdbc
+                                                                                        .getEntity().getPath()
+                                                                                        .equals(entitySampleProperty.getEntity()
                                                                                                 .getPath()))
-                                                                .findFirst().orElse(null) == null) {
-                                                        updateProperties = true;
-                                                        break;
-                                                }
-                                        }
-                                        if (updateProperties) {
-                                                for (EntitySampleProperty entitySampleProperty : entitySamplePropertyList) {
-                                                        deleteSampleProperty(entitySampleProperty.getId(), true,
-                                                                        userDetails);
-                                                }
-                                                for (EntitySampleProperty entitySamplePropertyFromJdbc : entitySamplePropertyFromTableList) {
-                                                        createSampleProperty(currentEntitySample.getId(),
-                                                                        new UpdatableEntitySampleProperty(
+                                                                                .findFirst().orElse(null) == null) {
+                                                                                updateProperties = true;
+                                                                                break;
+                                                                        }
+                                                                }
+                                                        }
+                                                        if (updateProperties) {
+                                                                for (EntitySampleProperty entitySampleProperty : entitySamplePropertyList) {
+                                                                        deleteSampleProperty(entitySampleProperty.getId(), true,
+                                                                                userDetails);
+                                                                }
+                                                                for (EntitySampleProperty entitySamplePropertyFromJdbc : entitySamplePropertyFromTableList) {
+                                                                        createSampleProperty(currentEntitySample.getId(),
+                                                                                new UpdatableEntitySampleProperty(
                                                                                         entitySamplePropertyFromJdbc
-                                                                                                        .getEntity()),
-                                                                        userDetails);
+                                                                                                .getEntity()),
+                                                                                userDetails);
+                                                                }
+                                                        }
+                                                }
+                                                EntitySample entitySample = updateSampleBody(currentEntitySample.getId(),
+                                                        entityQueryResult.getTextSampleBody(), userDetails);
+                                                entitySampleId = entitySample.getId();
+                                        } else {
+                                                UpdatableEntitySampleEntity newEntitySampleEntity = new UpdatableEntitySampleEntity();
+                                                newEntitySampleEntity.setSampleBody(entityQueryResult.getTextSampleBody());
+                                                newEntitySampleEntity.setSampleType(entityQueryResult.getSampleType());
+                                                newEntitySampleEntity.setSystemId(system.getId());
+                                                newEntitySampleEntity.setEntityQueryId(entityQuery.getId());
+                                                newEntitySampleEntity.setEntityId(dataEntity.getId());
+                                                newEntitySampleEntity.setName(String.format(
+                                                        "Sample name for query %s for entity %s for system %s",
+                                                        entityQuery.getName(), dataEntity.getName(), system.getName()));
+
+                                                EntitySample entitySample = createSample(newEntitySampleEntity, userDetails);
+                                                entitySampleId = entitySample.getId();
+
+                                                for (EntitySampleProperty entitySampleProperty : entitySamplePropertyFromTableList) {
+                                                        UpdatableEntitySampleProperty updatableEntitySampleProperty = new UpdatableEntitySampleProperty(
+                                                                entitySampleProperty.getEntity());
+                                                        createSampleProperty(entitySample.getId(), updatableEntitySampleProperty,
+                                                                userDetails);
                                                 }
                                         }
-                                }
-                                EntitySample entitySample = updateSampleBody(currentEntitySample.getId(),
-                                                entityQueryResult.getTextSampleBody(), userDetails);
-                                entitySampleId = entitySample.getId();
-                        } else {
-                                UpdatableEntitySampleEntity newEntitySampleEntity = new UpdatableEntitySampleEntity();
-                                newEntitySampleEntity.setSampleBody(entityQueryResult.getTextSampleBody());
-                                newEntitySampleEntity.setSampleType(entityQueryResult.getSampleType());
-                                newEntitySampleEntity.setSystemId(system.getId());
-                                newEntitySampleEntity.setEntityQueryId(entityQuery.getId());
-                                newEntitySampleEntity.setEntityId(dataEntity.getId());
-                                newEntitySampleEntity.setName(String.format(
-                                                "Sample name for query %s for entity %s for system %s",
-                                                entityQuery.getName(), dataEntity.getName(), system.getName()));
-
-                                EntitySample entitySample = createSample(newEntitySampleEntity, userDetails);
-                                entitySampleId = entitySample.getId();
-
-                                for (EntitySampleProperty entitySampleProperty : entitySamplePropertyFromTableList) {
-                                        UpdatableEntitySampleProperty updatableEntitySampleProperty = new UpdatableEntitySampleProperty(
-                                                        entitySampleProperty.getEntity());
-                                        createSampleProperty(entitySample.getId(), updatableEntitySampleProperty,
-                                                        userDetails);
                                 }
                         }
 
@@ -323,7 +359,11 @@ public class EntitySampleService {
                         updatableTaskRunEntity.setResultSampleId(entitySampleId);
                         taskRunService.updateTaskRunById(taskRun.getId(), updatableTaskRunEntity, userDetails);
                 } catch (Exception e) {
-                        updatableTaskRunEntity.setResultMsg(e.getMessage() + "\n" + ExceptionUtils.getStackTrace(e));
+
+                        final StringWriter sw = new StringWriter();
+                        final PrintWriter pw = new PrintWriter(sw, true);
+                        e.printStackTrace(pw);
+                        updatableTaskRunEntity.setResultMsg(e.getMessage() + "\n" + sw.getBuffer().toString());
                         updatableTaskRunEntity.setTaskState(TaskState.FAILED.getText());
                         updatableTaskRunEntity.setTaskEnd(new Timestamp(new Date().getTime()).toLocalDateTime());
                         taskRunService.updateTaskRunById(taskRun.getId(), updatableTaskRunEntity, userDetails);
@@ -333,10 +373,10 @@ public class EntitySampleService {
 
         public String getSamplesPropertiesForTest(String taskId, Integer rowsNumber, UserDetails userDetails)
                         throws LottabyteException {
-                List<TaskRun> taskRunListToCheck = taskRunService.getTaskRunListByTaskId(taskId, userDetails);
+                /*List<TaskRun> taskRunListToCheck = taskRunService.getTaskRunListByTaskId(taskId, userDetails);
                 if (!taskRunListToCheck.isEmpty())
                         throw new LottabyteException(Message.LBE01502,
-                                                        userDetails.getLanguage(), taskId);
+                                                        userDetails.getLanguage(), taskId);*/
 
                 try {
                         ConnectorFactory factory = new ConnectorFactory();
@@ -358,21 +398,21 @@ public class EntitySampleService {
                         DataEntity dataEntity = entityService.getDataEntityById(entityQuery.getEntity().getEntityId(),
                                         userDetails);
                         if (dataEntity == null)
-                                throw new LottabyteException(Message.LBE00301,
+                                throw new LottabyteException(Message.LBE00302,
                                                                 userDetails.getLanguage(),
                                                                 entityQuery.getEntity().getEntityId());
 
                         SystemConnection systemConnection = systemConnectionService
                                         .getSystemConnectionById(task.getEntity().getSystemConnectionId(), userDetails);
                         if (systemConnection == null)
-                                throw new LottabyteException(Message.LBE01201,
+                                throw new LottabyteException(Message.LBE01210,
                                                                 userDetails.getLanguage(),
                                                                 task.getEntity().getSystemConnectionId());
 
                         System system = systemService.getSystemById(systemConnection.getEntity().getSystemId(),
                                         userDetails);
                         if (system == null)
-                                throw new LottabyteException(Message.LBE00904,
+                                throw new LottabyteException(Message.LBE00950,
                                                                 userDetails.getLanguage(),
                                                                 systemConnection.getEntity().getSystemId());
 
@@ -380,7 +420,7 @@ public class EntitySampleService {
                                         systemConnection.getEntity().getConnectorId(),
                                         userDetails);
                         if (connector == null)
-                                throw new LottabyteException(Message.LBE01101,
+                                throw new LottabyteException(Message.LBE01102,
                                                                 userDetails.getLanguage(),
                                                                 systemConnection.getEntity().getConnectorId());
 
@@ -421,11 +461,14 @@ public class EntitySampleService {
                                 tree = objectMapper.readTree(entityQueryResult.getTextSampleBody());
                                 entityQueryResult.setTextSampleBody(objectMapper.writeValueAsString(tree));
                         } catch (JsonProcessingException e) {
-                                throw new LottabyteException(HttpStatus.BAD_REQUEST, e.getMessage());
+                                throw new LottabyteException(Message.LBE05001, userDetails.getLanguage(), e.getMessage() == null ? "" : e.getMessage());
                         }
                         return Helper.stringClipping(entityQueryResult.getTextSampleBody(), rowsNumber - 1);
                 } catch (Exception e) {
-                        throw new LottabyteException(HttpStatus.NOT_FOUND, e.getMessage());
+                        if (StringUtils.isBlank(e.getMessage()))
+                                throw new LottabyteException(Message.LBE01503, userDetails.getLanguage());
+                        else
+                                throw new LottabyteException(HttpStatus.BAD_REQUEST, e.getMessage());
                 }
         }
 
@@ -491,6 +534,8 @@ public class EntitySampleService {
                                 entitySampleProperty, userDetails);
                 // elasticsearchService.insertElasticSearchEntity(Collections.singletonList(sampleProperty.getSearchableArtifact()),
                 // userDetails);
+                elasticsearchService.updateElasticSearchEntity(Collections.singletonList(getSearchableArtifact(
+                        getEntitySampleById(sampleId, true, userDetails), userDetails)), userDetails);
                 return entitySampleRepository.getSamplePropertyById(sampleProperty.getId(), userDetails);
         }
 
@@ -539,9 +584,29 @@ public class EntitySampleService {
                 }
                 EntitySampleProperty sampleProperty = entitySampleRepository.updateSampleProperty(propertyId,
                                 entitySampleProperty, userDetails);
+                elasticsearchService.updateElasticSearchEntity(Collections.singletonList(getSearchableArtifact(
+                        getEntitySampleById(current.getEntity().getEntitySampleId(), true, userDetails), userDetails)), userDetails);
                 // elasticsearchService.updateElasticSearchEntity(Collections.singletonList(sampleProperty.getSearchableArtifact()),
                 // userDetails);
                 return entitySampleRepository.getSamplePropertyById(propertyId, userDetails);
+        }
+
+        public void deleteSampleProperties(String sampleId, Boolean force, UserDetails userDetails) throws LottabyteException {
+                List<EntitySampleProperty> entitySamplePropertyList = getAllSamplePropertyBySampleId(sampleId,
+                        userDetails);
+
+                List<DataEntityAttribute> relatedAttribs = entitySampleRepository.getEntityAttrsBySampleId(sampleId, userDetails);
+                List<DataEntity> relatedEntities = entitySampleRepository.getEntitiesBySampleId(sampleId, userDetails);
+                if (!relatedAttribs.isEmpty()) {
+                        List<String> attrs = relatedAttribs.stream().map(ModeledObject::getName).collect(Collectors.toList());
+                        List<String> links = relatedEntities.stream().map(r -> "link|" + r.getArtifactType() + "|" + r.getName() + "|" + r.getId()).collect(Collectors.toList());
+                        throw new LottabyteException(Message.LBE00332, userDetails.getLanguage(), StringUtils.join(links, ", "), StringUtils.join(attrs, ", "));
+                }
+
+                for (EntitySampleProperty entitySampleProperty : entitySamplePropertyList) {
+                        if (entitySampleProperty != null)
+                                deleteSampleProperty(entitySampleProperty.getId(), force, userDetails);
+                }
         }
 
         public void deleteSampleProperty(String propertyId, Boolean force, UserDetails userDetails)
@@ -549,21 +614,30 @@ public class EntitySampleService {
                 if (!entitySampleRepository.samplePropertyExists(propertyId, userDetails))
                         throw new LottabyteException(Message.LBE02002,
                                                         userDetails.getLanguage(), propertyId);
+                EntitySampleProperty current = entitySampleRepository.getSamplePropertyById(propertyId, userDetails);
+
                 if (userDetails.getStewardId() != null) {
-                        EntitySampleProperty current = entitySampleRepository.getSamplePropertyById(propertyId,
-                                        userDetails);
                         if (!entitySampleRepository.hasAccessToSample(current.getEntity().getEntitySampleId(),
                                         userDetails))
                                 throw new LottabyteException(Message.LBE02006,
                                                                 userDetails.getLanguage(),
                                                                 current.getEntity().getEntitySampleId());
                 }
-                if (entitySampleRepository.existsSamplePropertyBySamplePropertyId(propertyId, userDetails))
-                        throw new LottabyteException(Message.LBE00319,
-                                                        userDetails.getLanguage(), propertyId);
+                if (!force) {
+                        List<DataEntityAttribute> relatedAttribs = entitySampleRepository.getEntityAttrsByPropertyId(propertyId, userDetails);
+                        List<DataEntity> relatedEntities = entitySampleRepository.getEntitiesByPropertyId(propertyId, userDetails);
+                        if (!relatedAttribs.isEmpty()) {
+                                List<String> attrs = relatedAttribs.stream().map(ModeledObject::getName).collect(Collectors.toList());
+                                List<String> links = relatedEntities.stream().map(r -> "link|" + r.getArtifactType() + "|" + r.getName() + "|" + r.getId()).collect(Collectors.toList());
+                                throw new LottabyteException(Message.LBE00332, userDetails.getLanguage(), StringUtils.join(links, ", "), StringUtils.join(attrs, ", "));
+                        }
+                }
 
                 elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(propertyId), userDetails);
                 entitySampleRepository.deleteSampleProperty(propertyId, force, userDetails);
+
+                elasticsearchService.updateElasticSearchEntity(Collections.singletonList(getSearchableArtifact(
+                        getEntitySampleById(current.getEntity().getEntitySampleId(), true, userDetails), userDetails)), userDetails);
         }
 
         public EntitySample updateSampleBody(String sampleId, String sampleBody, UserDetails userDetails)
@@ -663,12 +737,14 @@ public class EntitySampleService {
                                 && !entitySampleRepository.hasAccessToSample(sampleId, userDetails))
                         throw new LottabyteException(Message.LBE02006,
                                                         userDetails.getLanguage(), sampleId);
-                List<EntitySampleProperty> entitySamplePropertyList = getAllSamplePropertyBySampleId(sampleId,
-                                userDetails);
+
+                deleteSampleProperties(sampleId, force, userDetails);
+                /*List<EntitySampleProperty> entitySamplePropertyList = getAllSamplePropertyBySampleId(sampleId,
+                        userDetails);
                 for (EntitySampleProperty entitySampleProperty : entitySamplePropertyList) {
                         if (entitySampleProperty != null)
                                 deleteSampleProperty(entitySampleProperty.getId(), force, userDetails);
-                }
+                }*/
 
                 entitySampleRepository.deleteSample(sampleId, entitySample.getEntity().getSampleBody() != null,
                                 userDetails);
@@ -694,7 +770,7 @@ public class EntitySampleService {
                 res.getItems().stream().forEach(
                                 x -> x.setTags(tagService.getArtifactTags(x.getId(), userDetails)
                                                 .stream().map(y -> y.getName()).collect(Collectors.toList())));
-
+                res.getItems().forEach(d -> d.setIsInFav(userFavService.isInFav(d.getId(), userDetails)));
                 return res;
         }
 
@@ -932,8 +1008,8 @@ public class EntitySampleService {
 
         public SearchResponse<FlatEntitySampleProperty> searchSampleProperties(SearchRequestWithJoin request,
                         UserDetails userDetails) throws LottabyteException {
-                ServiceUtils.validateSearchRequestWithJoin(request, searchablePropertyColumns, joinPropertyColumns,
-                                userDetails);
+                //ServiceUtils.validateSearchRequestWithJoin(request, searchablePropertyColumns, joinPropertyColumns,
+                  //              userDetails);
 
                 return entitySampleRepository.searchSampleProperties(request, searchablePropertyColumns,
                                 joinPropertyColumns,
@@ -1004,6 +1080,7 @@ public class EntitySampleService {
                         .modifiedBy(entitySample.getMetadata().getModifiedBy())
                         .modifiedAt(entitySample.getMetadata().getModifiedAt())
                         .artifactType(entitySample.getMetadata().getArtifactType())
+                        .artifactState(ArtifactState.PUBLISHED.name())
                         .effectiveStartDate(entitySample.getMetadata().getEffectiveStartDate())
                         .effectiveEndDate(entitySample.getMetadata().getEffectiveEndDate())
                         .tags(Helper.getEmptyListIfNull(entitySample.getMetadata().getTags()).stream()
@@ -1035,6 +1112,7 @@ public class EntitySampleService {
                         .modifiedBy(entitySampleProperty.getMetadata().getModifiedBy())
                         .modifiedAt(entitySampleProperty.getMetadata().getModifiedAt())
                         .artifactType(entitySampleProperty.getMetadata().getArtifactType())
+                        .artifactState(ArtifactState.PUBLISHED.name())
                         .effectiveStartDate(entitySampleProperty.getMetadata().getEffectiveStartDate())
                         .effectiveEndDate(entitySampleProperty.getMetadata().getEffectiveEndDate())
                         .tags(Helper.getEmptyListIfNull(entitySampleProperty.getMetadata().getTags()).stream()

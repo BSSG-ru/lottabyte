@@ -2,20 +2,26 @@ package ru.bssg.lottabyte.coreapi.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.businessEntity.BusinessEntity;
 import ru.bssg.lottabyte.core.model.dataentity.DataEntity;
+import ru.bssg.lottabyte.core.model.dataentity.UpdatableDataEntityEntity;
 import ru.bssg.lottabyte.core.model.entityQuery.EntityQuery;
 import ru.bssg.lottabyte.core.model.entityQuery.FlatEntityQuery;
 import ru.bssg.lottabyte.core.model.entityQuery.SearchableEntityQuery;
 import ru.bssg.lottabyte.core.model.entityQuery.UpdatableEntityQueryEntity;
+import ru.bssg.lottabyte.core.model.entitySample.EntitySample;
 import ru.bssg.lottabyte.core.model.system.System;
+import ru.bssg.lottabyte.core.model.task.Task;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowTask;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowType;
 import ru.bssg.lottabyte.core.ui.model.*;
@@ -23,6 +29,7 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.util.ServiceUtils;
 import ru.bssg.lottabyte.coreapi.repository.DomainRepository;
 import ru.bssg.lottabyte.coreapi.repository.EntityQueryRepository;
+import ru.bssg.lottabyte.coreapi.repository.ProductRepository;
 import ru.bssg.lottabyte.coreapi.util.Helper;
 
 import java.util.ArrayList;
@@ -36,6 +43,7 @@ import java.util.stream.Collectors;
 public class EntityQueryService extends WorkflowableService<EntityQuery> {
     private final EntityQueryRepository entityQueryRepository;
     private final EntitySampleService entitySampleService;
+    private final ProductRepository productRepository;
     private final TaskService taskService;
     private final EntityService entityService;
     private final SystemService systemService;
@@ -45,6 +53,8 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
     private final DomainRepository domainRepository;
     private final RatingService ratingService;
     private final WorkflowService workflowService;
+    private final ReferenceService referenceService;
+    private final UserFavService userFavService;
     private final ArtifactType serviceArtifactType = ArtifactType.entity_query;
 
     private final SearchColumn[] searchableColumns = {
@@ -69,8 +79,9 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
             TaskService taskService, EntityService entityService, SystemService systemService,
             ElasticsearchService elasticsearchService, TagService tagService,
             CommentService commentService, DomainRepository domainRepository,
-            RatingService ratingService, WorkflowService workflowService) {
-        super(entityQueryRepository, workflowService, tagService, ArtifactType.entity_query, elasticsearchService);
+            RatingService ratingService, WorkflowService workflowService,ProductRepository productRepository,
+            ReferenceService referenceService, UserFavService userFavService) {
+        super(entityQueryRepository, workflowService, tagService, ArtifactType.entity_query, elasticsearchService, referenceService);
         this.entityQueryRepository = entityQueryRepository;
         this.entitySampleService = entitySampleService;
         this.taskService = taskService;
@@ -82,6 +93,20 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
         this.domainRepository = domainRepository;
         this.ratingService = ratingService;
         this.workflowService = workflowService;
+        this.productRepository = productRepository;
+        this.referenceService = referenceService;
+        this.userFavService = userFavService;
+    }
+
+    public EntityQuery wfSend(String draftId, UserDetails userDetails) throws LottabyteException {
+        EntityQuery draft = entityQueryRepository.getById(draftId, userDetails);
+        if (draft == null)
+            throw new LottabyteException(
+                    Message.LBE03004,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+
+        return draft;
     }
 
     public EntityQuery wfPublish(String draftEntityQueryId, UserDetails userDetails) throws LottabyteException {
@@ -240,7 +265,7 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
         }
     }
 
-    public EntityQuery patchQuery(String queryId, UpdatableEntityQueryEntity entityQueryEntity, UserDetails userDetails)
+    public EntityQuery patchQuery(String queryId, UpdatableEntityQueryEntity entityQueryEntity, boolean updateNulls, UserDetails userDetails)
             throws LottabyteException {
         EntityQuery current = entityQueryRepository.getById(queryId, userDetails);
         if (current == null)
@@ -293,24 +318,32 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
             draftId = queryId;
         }
 
-        entityQueryRepository.patchQuery(draftId, entityQueryEntity, userDetails);
+        entityQueryRepository.patchQuery(draftId, entityQueryEntity, updateNulls, userDetails);
         EntityQuery entityQuery = getEntityQueryById(draftId, userDetails);
         // elasticsearchService.updateElasticSearchEntity(Collections.singletonList(entityQuery.getSearchableArtifact()),
         // userDetails);
         return entityQuery;
     }
 
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public EntityQuery deleteQuery(String queryId, UserDetails userDetails) throws LottabyteException {
         EntityQuery current = getEntityQueryById(queryId, userDetails);
         if (userDetails.getStewardId() != null && !entityQueryRepository.hasAccessToQuery(queryId, userDetails))
             throw new LottabyteException(Message.LBE00403,
                             userDetails.getLanguage(), queryId);
-        if (entitySampleService.getEntitySampleByQueryId(queryId, false, userDetails) != null)
+        EntitySample es = entitySampleService.getEntitySampleByQueryId(queryId, false, userDetails);
+        if (es != null)
             throw new LottabyteException(Message.LBE00320,
-                            userDetails.getLanguage(), queryId);
-        if (!taskService.getTasksByQueryId(queryId, 1, 0, userDetails).getResources().isEmpty())
-            throw new LottabyteException(
-                    Message.LBE00321, userDetails.getLanguage());
+                            userDetails.getLanguage(), "link|" + es.getArtifactType() + "|" + es.getName() + "|" + es.getId());
+        if (productRepository.existsProductWithQuery(queryId, userDetails))
+            throw new LottabyteException(Message.LBE03420,
+                    userDetails.getLanguage(),queryId);
+
+        List<Task> relatedTasks = taskService.getTasksByQueryId(queryId, 1, 0, userDetails).getResources();
+        if (!relatedTasks.isEmpty()) {
+            List<String> links = relatedTasks.stream().map(r -> "link|" + r.getArtifactType() + "|" + r.getName() + "|" + r.getId()).collect(Collectors.toList());
+            throw new LottabyteException(Message.LBE00321, userDetails.getLanguage(), StringUtils.join(links, ", "));
+        }
 
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
             String draftId = entityQueryRepository.getDraftId(queryId, userDetails);
@@ -348,6 +381,85 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
          * 
          * return archiveResponse;
          */
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public EntityQuery archiveQueryById(String queryId, UserDetails userDetails) throws LottabyteException {
+        EntityQuery current = getEntityQueryById(queryId, userDetails);
+        if (userDetails.getStewardId() != null && !entityQueryRepository.hasAccessToQuery(queryId, userDetails))
+            throw new LottabyteException(Message.LBE00403,
+                    userDetails.getLanguage(), queryId);
+        EntitySample es = entitySampleService.getEntitySampleByQueryId(queryId, false, userDetails);
+        if (es != null)
+            throw new LottabyteException(Message.LBE00320,
+                    userDetails.getLanguage(), "link|" + es.getArtifactType() + "|" + es.getName() + "|" + es.getId());
+        if (productRepository.existsProductWithQuery(queryId, userDetails))
+            throw new LottabyteException(Message.LBE03420,
+                    userDetails.getLanguage(),queryId);
+
+        List<Task> relatedTasks = taskService.getTasksByQueryId(queryId, 1, 0, userDetails).getResources();
+        if (!relatedTasks.isEmpty()) {
+            List<String> links = relatedTasks.stream().map(r -> "link|" + r.getArtifactType() + "|" + r.getName() + "|" + r.getId()).collect(Collectors.toList());
+            throw new LottabyteException(Message.LBE00321, userDetails.getLanguage(), StringUtils.join(links, ", "));
+        }
+
+        if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+            String draftId = entityQueryRepository.getDraftId(queryId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00406,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.ARCHIVE, userDetails);
+            workflowTaskId = pi.getId();
+
+            entityQueryRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+            return getEntityQueryById(draftId, userDetails);
+        } else {
+            String draftId = entityQueryRepository.getDraftId(queryId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public EntityQuery restoreQueryById(String queryId, UserDetails userDetails) throws LottabyteException {
+        EntityQuery current = getEntityQueryById(queryId, userDetails);
+        if (userDetails.getStewardId() != null && !entityQueryRepository.hasAccessToQuery(queryId, userDetails))
+            throw new LottabyteException(Message.LBE00403,
+                    userDetails.getLanguage(), queryId);
+
+        if (ArtifactState.ARCHIVED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+            String draftId = entityQueryRepository.getDraftId(queryId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00406,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.RESTORE, userDetails);
+            workflowTaskId = pi.getId();
+
+            entityQueryRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+            return getEntityQueryById(draftId, userDetails);
+        } else {
+            String draftId = entityQueryRepository.getDraftId(queryId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
     }
 
     public EntityQuery getEntityQueryById(String queryId, UserDetails userDetails) throws LottabyteException {
@@ -402,6 +514,7 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
                     if (task != null)
                         y.setWorkflowState(task.getEntity().getWorkflowState());
                 });
+        res.getItems().forEach(d -> d.setIsInFav(userFavService.isInFav(d.getId(), userDetails)));
         return res;
     }
 
@@ -462,6 +575,20 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
         return entityQuery;
     }
 
+    public EntityQuery restoreQueryVersionById(String queryId, Integer versionId, UserDetails userDetails)
+            throws LottabyteException {
+        EntityQuery queryVersion = getEntityQueryVersionById(queryId, versionId, userDetails);
+        UpdatableEntityQueryEntity queryVersionEntity = new UpdatableEntityQueryEntity(queryVersion.getEntity());
+
+        EntityQuery query = patchQuery(queryId, queryVersionEntity, true, userDetails);
+
+        WorkflowableMetadata versionMetadata = (WorkflowableMetadata)queryVersion.getMetadata();
+
+        tagService.mergeTags(versionMetadata.getAncestorDraftId() == null ? queryVersion.getId() : versionMetadata.getAncestorDraftId(), serviceArtifactType, query.getId(), serviceArtifactType, userDetails);
+
+        return query;
+    }
+
     private void fillEntitiQueryVersionRelations(EntityQuery entityQuery, UserDetails userDetails)
             throws LottabyteException {
         WorkflowableMetadata md = (WorkflowableMetadata) entityQuery.getMetadata();
@@ -480,6 +607,7 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
         .modifiedBy(entityQuery.getMetadata().getModifiedBy())
         .modifiedAt(entityQuery.getMetadata().getModifiedAt())
         .artifactType(entityQuery.getMetadata().getArtifactType())
+        .artifactState(((WorkflowableMetadata)entityQuery.getMetadata()).getState().name())
         .effectiveStartDate(entityQuery.getMetadata().getEffectiveStartDate())
         .effectiveEndDate(entityQuery.getMetadata().getEffectiveEndDate())
         .tags(Helper.getEmptyListIfNull(entityQuery.getMetadata().getTags()).stream()

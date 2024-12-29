@@ -18,11 +18,15 @@ public class FlatEntitySampleProperty extends FlatModeledObject {
     private List<String> mappedEntityAttributeIds;
     private String entityAttributeName;
     private String entityAttributeId;
+    private String entitySampleId;
+    private String metaColumnId;
+    private String metaColumnName;
 
     public FlatEntitySampleProperty(EntitySampleProperty entitySampleProperty) {
         super(entitySampleProperty.getFlatModeledObject());
         this.pathType = entitySampleProperty.getEntity().getPathType();
         this.path = entitySampleProperty.getEntity().getPath();
         this.mappedEntityAttributeIds = entitySampleProperty.getEntity().getMappedAttributeIds();
+        this.entitySampleId = entitySampleProperty.getEntity().getEntitySampleId();
     }
 }

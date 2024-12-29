@@ -138,6 +138,7 @@ public class TenantRepositoryImpl implements TenantRepostiory {
 
     @Override
     public String getTenant(String domain) {
+        log.info("DOMAIN "+ domain);
         return jdbcTemplate.queryForObject("SELECT id " +
                         "FROM da.tenant " +
                         "WHERE \"domain\" = ?",

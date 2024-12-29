@@ -19,7 +19,11 @@ public class Scheduler {
     }
 
     @Scheduled(fixedRate = 60000)
-    public void completingTasks() throws LottabyteException, SchedulerException {
-        schedulerService.completingTasks();
+    public void completingTasks() {
+        try {
+            schedulerService.completingTasks();
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
     }
 }

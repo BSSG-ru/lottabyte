@@ -148,6 +148,8 @@ public class JwtHelper {
 				userDetails.setUserRoles(Arrays.asList(claims.get("roles").asArray(String.class)));
 			if (claims.containsKey("domains"))
 				userDetails.setUserDomains(Arrays.asList(Arrays.stream(claims.get("domains").asArray(String.class)).map(x -> UUID.fromString(x)).toArray(sz -> new UUID[sz])));
+			if (claims.containsKey("stew_domains"))
+				userDetails.setStewardDomains(Arrays.asList(Arrays.stream(claims.get("stew_domains").asArray(String.class)).map(x -> UUID.fromString(x)).toArray(sz -> new UUID[sz])));
 			if (claims.containsKey("groups"))
 				userDetails.setGroupRoles(Arrays.asList(claims.get("groups").asArray(String.class)));
 			if (claims.containsKey("authenticator"))
@@ -163,6 +165,8 @@ public class JwtHelper {
 			if (claims.containsKey("language"))
 				userDetails.setLanguage(Language.valueOf(claims.get("language").asString()));
 
+			log.info("getUserDetail (язык): " + userDetails.getLanguage().toString());
+
 			return userDetails;
 		} catch (Exception e){
 			throw new LottabyteException(HttpStatus.NOT_AUTHORIZED, e.toString());
@@ -170,7 +174,8 @@ public class JwtHelper {
 	}
 
 	public String createJwtForClaims(UserDetails userDetails) {
-		log.debug("Создание JWT токена для пользователя: " + userDetails.getUsername());
+		log.info("Создание JWT токена для пользователя: " + userDetails.getUsername());
+		log.info("Создание JWT токена для пользователя (язык): " + userDetails.getLanguage().toString());
 
 		Calendar calendar = Calendar.getInstance();
 		calendar.setTimeInMillis(Instant.now().toEpochMilli());
@@ -188,6 +193,7 @@ public class JwtHelper {
 		jwtBuilder.withClaim("tenant", userDetails.getTenant());
 		jwtBuilder.withArrayClaim("roles", userDetails.getUserRoles().stream().toArray(String[]::new));
 		jwtBuilder.withArrayClaim("domains", userDetails.getUserDomains().stream().map(x -> x.toString()).toArray(String[]::new));
+		jwtBuilder.withArrayClaim("stew_domains", userDetails.getStewardDomains().stream().map(x -> x.toString()).toArray(String[]::new));
 		jwtBuilder.withArrayClaim("permissions", userDetails.getPermissions().stream().toArray(String[]::new));
 		jwtBuilder.withClaim("language", userDetails.getLanguage().toString());
 		List<Long> groups = new ArrayList<>();

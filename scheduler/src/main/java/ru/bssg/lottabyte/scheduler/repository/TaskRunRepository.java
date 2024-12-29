@@ -33,7 +33,7 @@ public class TaskRunRepository {
             TaskRun taskRun = null;
 
             TaskRunEntity taskRunEntity = new TaskRunEntity();
-            taskRunEntity.setTaskId(rs.getString("task_id"));
+            taskRunEntity.setTaskScheduleId(rs.getString("task_schedule_id"));
             taskRunEntity.setResultSampleId(rs.getString("result_sample_id"));
             taskRunEntity.setResultSampleVersionId(rs.getInt("result_sample_version_id"));
             taskRunEntity.setResultMsg(rs.getString("result_msg"));
@@ -60,18 +60,18 @@ public class TaskRunRepository {
         }
     }
 
-    public TaskRun getTaskRunByTaskId(String taskId, UserDetails userDetails) {
+    public TaskRun getTaskRunByTaskScheduleId(String taskScheduleId, UserDetails userDetails) {
         List<TaskRun> taskRunList = jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".task_run " +
-                        "WHERE task_id=?;",
-                new TaskRunRowMapper(), UUID.fromString(taskId));
+                        "WHERE task_schedule_id=?;",
+                new TaskRunRowMapper(), UUID.fromString(taskScheduleId));
 
         return taskRunList.stream().findFirst().orElse(null);
     }
-    public List<TaskRun> getTaskRunListByTaskId(String taskId, UserDetails userDetails) {
+    public List<TaskRun> getTaskRunListByTaskScheduleId(String taskScheduleId, UserDetails userDetails) {
         List<TaskRun> taskRunList = jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".task_run " +
-                        "WHERE task_id=?" +
+                        "WHERE task_schedule_id=?" +
                         "AND task_end is null",
-                new TaskRunRowMapper(), UUID.fromString(taskId));
+                new TaskRunRowMapper(), UUID.fromString(taskScheduleId));
 
         if (taskRunList.isEmpty())
             return Collections.emptyList();

@@ -1,12 +1,17 @@
 package ru.bssg.lottabyte.coreapi.service.connector;
 
+import lombok.RequiredArgsConstructor;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.connector.ConnectorType;
 import ru.bssg.lottabyte.core.connector.IConnectorService;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
+import ru.bssg.lottabyte.coreapi.service.MetadataService;
 
+@RequiredArgsConstructor
 public class ConnectorFactory {
+    MetadataService metadataService;
+
     public IConnectorService getConnector(ConnectorType type, UserDetails userDetails) throws LottabyteException {
         IConnectorService toReturn = null;
         switch (type) {

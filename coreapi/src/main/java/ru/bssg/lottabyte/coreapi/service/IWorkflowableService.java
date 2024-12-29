@@ -5,6 +5,7 @@ import ru.bssg.lottabyte.core.model.ArtifactState;
 import ru.bssg.lottabyte.core.model.ModeledObject;
 import ru.bssg.lottabyte.core.model.WorkflowState;
 import ru.bssg.lottabyte.core.model.domain.Domain;
+import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowType;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 
@@ -28,4 +29,5 @@ public interface IWorkflowableService<T extends ModeledObject> {
 
     public String getIdByAncestorDraftId(String ancestorDraftId, UserDetails userDetails) throws LottabyteException;
 
+    public SearchableArtifact getSearchableArtifact(T artifact, UserDetails userDetails) throws LottabyteException;
 }

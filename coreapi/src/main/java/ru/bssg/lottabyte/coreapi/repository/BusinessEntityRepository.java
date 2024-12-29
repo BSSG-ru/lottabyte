@@ -1,24 +1,21 @@
 package ru.bssg.lottabyte.coreapi.repository;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.businessEntity.*;
-import ru.bssg.lottabyte.core.model.datatype.DataType;
-import ru.bssg.lottabyte.core.model.datatype.DataTypeEntity;
-import ru.bssg.lottabyte.core.model.datatype.FlatDataType;
 import ru.bssg.lottabyte.core.ui.model.*;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
-import ru.bssg.lottabyte.core.util.ServiceUtils;
 import ru.bssg.lottabyte.coreapi.util.QueryHelper;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.*;
+
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
 
 @Repository
 @Slf4j
@@ -37,6 +34,8 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
         public BusinessEntity mapRow(ResultSet rs, int rowNum) throws SQLException {
             BusinessEntityEntity businessEntityEntity = new BusinessEntityEntity();
             businessEntityEntity.setName(rs.getString("name"));
+            businessEntityEntity.setDescription(rs.getString("description"));
+            businessEntityEntity.setShortDescription(rs.getString("short_description"));
             businessEntityEntity.setTechName(rs.getString("tech_name"));
             businessEntityEntity.setDefinition(rs.getString("definition"));
             businessEntityEntity.setRegulation(rs.getString("regulation"));
@@ -65,6 +64,8 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
             fi.setName(rs.getString("name"));
             fi.setVersionId(rs.getInt("version_id"));
             fi.setModified(rs.getTimestamp("modified").toLocalDateTime());
+            fi.setDescription(rs.getString("description"));
+            fi.setShortDescription(rs.getString("short_description"));
             fi.setTechName(rs.getString("tech_name"));
             fi.setDefinition(rs.getString("definition"));
             fi.setRegulation(rs.getString("regulation"));
@@ -77,6 +78,8 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
             fi.setWorkflowTaskId(rs.getString("workflow_task_id"));
             fi.setDomainId(rs.getString("domain_id"));
             fi.setDomainName(rs.getString("domain_name"));
+            fi.setDatatypeId(rs.getString("datatype_id"));
+            fi.setDatatypeName(rs.getString("datatype_name"));
             fi.setParentId(rs.getString("parent_id"));
             return fi;
         }
@@ -95,10 +98,12 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
                 : null;
 
         String query = "INSERT INTO da_" + userDetails.getTenant() + ".business_entity " +
-                "(id, \"name\", tech_name, definition, regulation, alt_names, state, workflow_task_id, created, creator, modified, modifier, domain_id, formula, examples, link, datatype_id, limits, roles) "
+                "(id, \"name\", description, short_description, tech_name, definition, regulation, alt_names, state, workflow_task_id, created, creator, modified, modifier, domain_id, formula, examples, link, datatype_id, limits, roles) "
                 +
-                "VALUES(?, ?, ?, ?, ?, string_to_array(?,','), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "VALUES(?, ?, ?, ?, ?, ?, ?, string_to_array(?,','), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         jdbcTemplate.update(query, newId, newBusinessEntityEntity.getName(),
+                newBusinessEntityEntity.getDescription(),
+                newBusinessEntityEntity.getShortDescription(),
                 newBusinessEntityEntity.getTechName(),
                 newBusinessEntityEntity.getDefinition(),
                 newBusinessEntityEntity.getRegulation(),
@@ -114,64 +119,79 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
     }
 
     public void patchBusinessEntity(String businessEntityId, UpdatableBusinessEntityEntity businessEntityEntity,
-            UserDetails userDetails) {
+            boolean updateNulls, UserDetails userDetails) {
         List<String> sets = new ArrayList<>();
         List<Object> params = new ArrayList<>();
 
         String query = "UPDATE da_" + userDetails.getTenant() + ".business_entity SET modifier = ?, modified = ?";
         params.add(userDetails.getUid());
         params.add(new Timestamp(new Date().getTime()));
-        if (businessEntityEntity.getName() != null) {
+        if (updateNulls || businessEntityEntity.getName() != null) {
             sets.add("\"name\" = ?");
             params.add(businessEntityEntity.getName());
         }
-        if (businessEntityEntity.getDefinition() != null) {
+        if (updateNulls || businessEntityEntity.getDefinition() != null) {
             sets.add("definition = ?");
             params.add(businessEntityEntity.getDefinition());
         }
-        if (businessEntityEntity.getTechName() != null) {
+        if (updateNulls || businessEntityEntity.getTechName() != null) {
             sets.add("tech_name = ?");
             params.add(businessEntityEntity.getTechName());
         }
-        if (businessEntityEntity.getRegulation() != null) {
+        if (updateNulls || businessEntityEntity.getDescription() != null) {
+            sets.add("description = ?");
+            params.add(businessEntityEntity.getDescription());
+        }
+        if (updateNulls || businessEntityEntity.getShortDescription() != null) {
+            sets.add("short_description = ?");
+            params.add(businessEntityEntity.getShortDescription());
+        }
+        if (updateNulls || businessEntityEntity.getRegulation() != null) {
             sets.add("regulation = ?");
             params.add(businessEntityEntity.getRegulation());
         }
-        if (businessEntityEntity.getAltNames() != null) {
-            sets.add("alt_names = string_to_array(?,',')");
-            String altNamesString = String.join(",", businessEntityEntity.getAltNames());
-            params.add(altNamesString);
+        if (updateNulls || businessEntityEntity.getAltNames() != null) {
+            if (businessEntityEntity.getAltNames() == null) {
+                sets.add("alt_names = ?");
+                params.add(null);
+            } else {
+                sets.add("alt_names = string_to_array(?,',')");
+                String altNamesString = String.join(",", businessEntityEntity.getAltNames());
+                params.add(altNamesString);
+            }
         }
-        if (businessEntityEntity.getDomainId() != null) {
+        if (updateNulls || businessEntityEntity.getDomainId() != null) {
             sets.add("domain_id = ?");
-            params.add(businessEntityEntity.getDomainId().isEmpty() ? null
-                    : UUID.fromString(businessEntityEntity.getDomainId()));
+            params.add((businessEntityEntity.getDomainId() == null || businessEntityEntity.getDomainId().isEmpty()) ?
+                    null : UUID.fromString(businessEntityEntity.getDomainId()));
         }
-        if (businessEntityEntity.getParentId() != null) {
+        if (updateNulls || businessEntityEntity.getParentId() != null) {
             sets.add("parent_id = ?");
-            params.add(businessEntityEntity.getParentId().isEmpty() ? null : UUID.fromString(businessEntityEntity.getParentId()));
+            params.add((businessEntityEntity.getParentId() == null || businessEntityEntity.getParentId().isEmpty()) ?
+                    null : UUID.fromString(businessEntityEntity.getParentId()));
         }
-        if (businessEntityEntity.getFormula() != null) {
+        if (updateNulls || businessEntityEntity.getFormula() != null) {
             sets.add("formula = ?");
             params.add(businessEntityEntity.getFormula());
         }
-        if (businessEntityEntity.getExamples() != null) {
+        if (updateNulls || businessEntityEntity.getExamples() != null) {
             sets.add("examples = ?");
             params.add(businessEntityEntity.getExamples());
         }
-        if (businessEntityEntity.getLink() != null) {
+        if (updateNulls || businessEntityEntity.getLink() != null) {
             sets.add("link = ?");
             params.add(businessEntityEntity.getLink());
         }
-        if (businessEntityEntity.getDatatypeId() != null) {
+        if (updateNulls || businessEntityEntity.getDatatypeId() != null) {
             sets.add("datatype_id = ?");
-            params.add(businessEntityEntity.getDatatypeId().isEmpty() ? null : UUID.fromString(businessEntityEntity.getDatatypeId()));
+            params.add((businessEntityEntity.getDatatypeId() == null || businessEntityEntity.getDatatypeId().isEmpty()) ?
+                    null : UUID.fromString(businessEntityEntity.getDatatypeId()));
         }
-        if (businessEntityEntity.getLimits() != null) {
+        if (updateNulls || businessEntityEntity.getLimits() != null) {
             sets.add("limits = ?");
             params.add(businessEntityEntity.getLimits());
         }
-        if (businessEntityEntity.getRoles() != null) {
+        if (updateNulls || businessEntityEntity.getRoles() != null) {
             sets.add("roles = ?");
             params.add(businessEntityEntity.getRoles());
         }
@@ -179,6 +199,7 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
             query += ", " + String.join(",", sets);
             query += " WHERE id = ?";
             params.add(UUID.fromString(businessEntityId));
+            log.info("QQ " + query);
             jdbcTemplate.update(query, params.toArray());
         }
     }
@@ -186,7 +207,7 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
     public SearchResponse<FlatBusinessEntity> searchBusinessEntity(SearchRequestWithJoin searchRequest,
             SearchColumn[] searchableColumns, SearchColumnForJoin[] searchableColumnsForJoin, UserDetails userDetails) {
 
-        SearchSQLParts searchSQLParts = getSearchSQLParts(searchRequest, searchableColumns, "tbl1.domain_id", true, userDetails);
+        SearchSQLParts searchSQLParts = getSearchSQLParts(searchRequest, searchableColumns, "tbl1.domain_id", true, true, userDetails);
 
         String orderby = searchSQLParts.getOrderBy();
         String where = searchSQLParts.getWhere();
@@ -209,8 +230,9 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
                 + "left join (select rsyn.source_id, string_agg(syn.name, ',') as synonyms from da_" + userDetails.getTenant() + ".business_entity syn join da_" + userDetails.getTenant() + ".reference rsyn on rsyn.reference_type='BUSINESS_ENTITY_TO_BUSINESS_ENTITY' AND rsyn.target_id=syn.id group by rsyn.source_id) syn on syn.source_id=sq.id "
                 + "left join (select rlnk.source_id, string_agg(qwe.name, ',') as be_links from da_" + userDetails.getTenant() + ".business_entity qwe join da_" + userDetails.getTenant() + ".reference rlnk on rlnk.reference_type='BUSINESS_ENTITY_TO_BUSINESS_ENTITY_LINK' AND rlnk.target_id=qwe.id group by rlnk.source_id) qwe on qwe.source_id=sq.id ";
 
-        String queryForItems = "SELECT distinct tbl1.*, domain.name AS domain_name FROM (" + subQuery + ") tbl1 " + join
+        String queryForItems = "SELECT distinct tbl1.*, domain.name AS domain_name, datatype.name AS datatype_name FROM (" + subQuery + ") tbl1 " + join
                 + " LEFT JOIN da_" + userDetails.getTenant() + ".domain domain ON tbl1.domain_id=domain.id "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".datatype ON tbl1.datatype_id=CAST(datatype.id AS TEXT) "
                 + where + " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
                 + searchRequest.getLimit();
 
@@ -219,6 +241,7 @@ public class BusinessEntityRepository extends WorkflowableRepository<BusinessEnt
 
         String queryForTotal = "SELECT COUNT(distinct tbl1.id) FROM (" + subQuery + ") tbl1 " + join
                 + " LEFT JOIN da_" + userDetails.getTenant() + ".domain domain ON tbl1.domain_id=domain.id "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".datatype ON tbl1.datatype_id=CAST(datatype.id AS TEXT) "
                 + where;
         Long total = jdbcTemplate.queryForObject(queryForTotal, Long.class, whereValues.toArray());
 

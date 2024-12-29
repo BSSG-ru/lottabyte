@@ -29,7 +29,7 @@ public interface UserRepository {
     Boolean existsRole(String roleId, UserDetails userDetails);
     Boolean existsRoleByName(String roleName, String currentId, UserDetails userDetails);
     Boolean existsPermission(String permission);
-    Boolean existsUserByUsername(String username, UserDetails userDetails);
+    Boolean existsUserByUsername(String username, Integer exceptId, UserDetails userDetails);
     Boolean existsUserById(String uid, UserDetails userDetails);
     Boolean existsUserWithRole(String roleId, UserDetails userDetails);
     Boolean existsExternalGroupWithRole(String roleId, UserDetails userDetails);
@@ -39,4 +39,7 @@ public interface UserRepository {
     void deleteRole(String roleId, UserDetails userDetails);
     void updateUser(String userId, UpdatableUserDetails updatableUserDetails, UserDetails ud);
     void deleteUser(String userId, UserDetails userDetails);
+    void deleteSteward(String stewardId, UserDetails userDetails);
+    void createStewardForUser(String userId, UpdatableUserDetails user, UserDetails userDetails);
+    void updateStewardForUser(String userId, UpdatableUserDetails user, UserDetails userDetails);
 }

@@ -22,8 +22,8 @@ public class SearchableEntitySampleDQRule extends SearchableArtifact {
     protected boolean sendMail;
 
     @Builder
-    public SearchableEntitySampleDQRule(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String id1, String entitySampleId, String dqRuleId, String settings, boolean disabled, String indicatorId, String productId, boolean sendMail) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableEntitySampleDQRule(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String id1, String entitySampleId, String dqRuleId, String settings, boolean disabled, String indicatorId, String productId, boolean sendMail) {
+        super(id, versionId, name, description, "", tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.id = id1;
         this.entitySampleId = entitySampleId;
         this.dqRuleId = dqRuleId;

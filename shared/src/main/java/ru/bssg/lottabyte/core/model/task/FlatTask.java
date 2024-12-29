@@ -20,10 +20,12 @@ public class FlatTask extends FlatModeledObject {
     private String systemConnectionName;
     private String taskState;
     private LocalDateTime lastUpdated;
+    private Boolean isMetadataTask;
 
     public FlatTask(Task d) {
         super(d.getFlatModeledObject());
         this.queryId = d.getEntity().getQueryId();
         this.systemConnectionId = d.getEntity().getSystemConnectionId();
+        this.isMetadataTask = d.getEntity().getIsMetadataTask();
     }
 }

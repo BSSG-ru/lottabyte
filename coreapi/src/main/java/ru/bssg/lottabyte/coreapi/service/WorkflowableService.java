@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
+import ru.bssg.lottabyte.core.model.product.Product;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowType;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.coreapi.repository.WorkflowableRepository;
@@ -19,6 +20,7 @@ public abstract class WorkflowableService<T extends ModeledObject<? extends Enti
     private final TagService tagService;
     private final ArtifactType serviceArtifactType;
     private final ElasticsearchService elasticsearchService;
+    private final ReferenceService referenceService;
 
     public boolean existsInState(String artifactId, ArtifactState artifactState,
             UserDetails userDetails) throws LottabyteException {
@@ -79,6 +81,46 @@ public abstract class WorkflowableService<T extends ModeledObject<? extends Enti
         repository.setStateById(current.getId(), ArtifactState.DRAFT_HISTORY, userDetails);
         repository.setStateById(publishedId, ArtifactState.REMOVED, userDetails);
         elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(publishedId), userDetails);
+    }
+
+    public void wfApproveArchive(String draftId, UserDetails userDetails) throws LottabyteException {
+        T draft = getById(draftId, userDetails);
+        if (draft == null)
+            throw new LottabyteException(
+                    Message.LBE03004,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+        String publishedId = ((WorkflowableMetadata) draft.getMetadata()).getPublishedId();
+        if (publishedId == null)
+            throw new LottabyteException(
+                    Message.LBE03006,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+        repository.setStateById(draft.getId(), ArtifactState.DRAFT_HISTORY, userDetails);
+        repository.setStateById(publishedId, ArtifactState.ARCHIVED, userDetails);
+        referenceService.deleteReferenceBySourceId(draftId, userDetails);
+        elasticsearchService.updateElasticSearchEntity(Collections.singletonList(getSearchableArtifact(getById(publishedId, userDetails), userDetails)), userDetails);
+        //elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(publishedId), userDetails);
+    }
+
+    public void wfApproveRestore(String draftId, UserDetails userDetails) throws LottabyteException {
+        T draft = getById(draftId, userDetails);
+        if (draft == null)
+            throw new LottabyteException(
+                    Message.LBE03004,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+        String publishedId = ((WorkflowableMetadata) draft.getMetadata()).getPublishedId();
+        if (publishedId == null)
+            throw new LottabyteException(
+                    Message.LBE03006,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+        repository.setStateById(draft.getId(), ArtifactState.DRAFT_HISTORY, userDetails);
+        repository.setStateById(publishedId, ArtifactState.PUBLISHED, userDetails);
+        referenceService.deleteReferenceBySourceId(draftId, userDetails);
+        elasticsearchService.updateElasticSearchEntity(Collections.singletonList(getSearchableArtifact(getById(publishedId, userDetails), userDetails)), userDetails);
+        //elasticsearchService.updateElasticSearchEntity(); deleteElasticSearchEntityById(Collections.singletonList(publishedId), userDetails);
     }
 
     /*

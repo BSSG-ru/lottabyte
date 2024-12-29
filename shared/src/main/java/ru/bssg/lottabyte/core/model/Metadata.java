@@ -32,6 +32,9 @@ public class Metadata {
     private LocalDateTime effectiveStartDate;
     private LocalDateTime effectiveEndDate;
     private List<Relation> tags;
+    private String modifierDisplayName;
+    private String modifierDescription;
+    private String modifierEmail;
 
     public Metadata(ResultSet rs, ArtifactType artifactType) throws SQLException {
         this.setId(rs.getString("id"));
@@ -47,8 +50,20 @@ public class Metadata {
         try{
             this.setVersionId(rs.getInt("version_id"));
         }catch(SQLException ignored){}
-        this.setEffectiveStartDate(rs.getTimestamp("history_start").toLocalDateTime());
-        this.setEffectiveEndDate(rs.getTimestamp("history_end").toLocalDateTime());
+
+        try {
+            if (rs.getTimestamp("history_start") != null)
+                this.setEffectiveStartDate(rs.getTimestamp("history_start").toLocalDateTime());
+        } catch (SQLException ignored) {}
+        try {
+            if (rs.getTimestamp("history_end") != null)
+                this.setEffectiveEndDate(rs.getTimestamp("history_end").toLocalDateTime());
+        } catch (SQLException ignored) {}
+        try {
+            this.setModifierDisplayName(rs.getString("modifier_display_name"));
+            this.setModifierDescription(rs.getString("modifier_description"));
+            this.setModifierEmail(rs.getString("modifier_email"));
+        } catch (SQLException ignored) {}
     }
 
     public void setTags(List<Tag> tags) {

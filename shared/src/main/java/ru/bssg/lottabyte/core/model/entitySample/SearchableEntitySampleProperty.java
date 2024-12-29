@@ -19,8 +19,8 @@ public class SearchableEntitySampleProperty extends SearchableArtifact {
     protected List<String> mappedAttributeIds;
 
     @Builder
-    public SearchableEntitySampleProperty(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, EntitySamplePropertyPathType pathType, String path, String entitySampleId, String entitySampleName, List<String> mappedAttributeIds) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableEntitySampleProperty(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, EntitySamplePropertyPathType pathType, String path, String entitySampleId, String entitySampleName, List<String> mappedAttributeIds) {
+        super(id, versionId, name, description, "", tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.pathType = pathType;
         this.path = path;
         this.entitySampleId = entitySampleId;

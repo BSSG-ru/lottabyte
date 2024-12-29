@@ -22,6 +22,7 @@ import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
 import ru.bssg.lottabyte.core.model.dataentity.*;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
+import ru.bssg.lottabyte.core.model.indicator.Indicator;
 import ru.bssg.lottabyte.core.model.product.*;
 import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
 import ru.bssg.lottabyte.core.ui.model.SearchResponse;
@@ -103,7 +104,7 @@ public class ProductController {
         @Secured(roles = { "product_r" }, level = ANY_ROLE)
         public ResponseEntity<PaginatedArtifactList<Product>> getProductVersionsById(
                         @PathVariable("product_id") String productId,
-                        @Parameter(description = "The maximum number of Products to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "10") Integer limit,
+                        @Parameter(description = "The maximum number of Products to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "1000") Integer limit,
                         @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
                         @RequestHeader HttpHeaders headers) throws LottabyteException {
 
@@ -129,6 +130,26 @@ public class ProductController {
                         @Parameter(description = "Version ID of the Product", example = "1") @PathVariable("version_id") Integer versionId,
                         @RequestHeader HttpHeaders headers) throws LottabyteException {
                 return ResponseEntity.ok(productService.getProductVersionById(productId, versionId,
+                                jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+        }
+
+        @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Restores Product version by given guid and version id.", description = "This method can be used to restore Product history version by given guid and version id.", operationId = "getProductVersionById")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Operation successfully"),
+                        @ApiResponse(responseCode = "400", description = "Bad request"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden"),
+                        @ApiResponse(responseCode = "404", description = "Product version not found"),
+                        @ApiResponse(responseCode = "500", description = "Internal Server error")
+        })
+        @RequestMapping(value = "/{product_id}/versions/{version_id}/restore", method = RequestMethod.POST, produces = {
+                        "application/json" })
+        @Secured(roles = { "product_u" }, level = ANY_ROLE)
+        public ResponseEntity<Product> restoreProductVersionById(
+                        @Parameter(description = "ID of the Product", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_id") String productId,
+                        @Parameter(description = "Version ID of the Product", example = "1") @PathVariable("version_id") Integer versionId,
+                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                return ResponseEntity.ok(productService.restoreProductVersionById(productId, versionId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
         }
 
@@ -162,7 +183,7 @@ public class ProductController {
                         @Parameter(description = "Artifact ID of the Entity", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_id") String productId,
                         @RequestBody UpdatableProductEntity productEntity,
                         @RequestHeader HttpHeaders headers) throws LottabyteException {
-                return new ResponseEntity<>(productService.updateProduct(productId, productEntity,
+                return new ResponseEntity<>(productService.updateProduct(productId, productEntity, false,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
 
@@ -320,5 +341,61 @@ public class ProductController {
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
                 return new ResponseEntity<>(productService.createDQRule(productId, newEntitySampleDQRuleEntity,
                                 userDetails), HttpStatus.OK);
+        }
+
+        @Operation(
+                security = @SecurityRequirement(name = "bearerAuth"),
+                summary = "Archives Product by given guid.",
+                description = "This method can be used to archive Product by given guid.",
+                operationId = "archiveProduct"
+        )
+        @ApiResponses(value = {
+                @ApiResponse(responseCode = "200", description = "Product has been archived successfully for DRAFT domain."),
+                @ApiResponse(responseCode = "400", description = "Bad request"),
+                @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                @ApiResponse(responseCode = "403", description = "Forbidden"),
+                @ApiResponse(responseCode = "500", description = "Internal Server error")
+        })
+        @RequestMapping(value = "/archive/{product_id}", method = RequestMethod.POST, produces = { "application/json"})
+        @Secured(roles = {"product_r", "product_u"}, level = ALL_ROLES_STRICT)
+        public ResponseEntity<?> archiveProduct(
+                @Parameter(description = "ID of the Product",
+                        example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+                @PathVariable("product_id") String productId,
+                @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+                Product result = productService.archiveProductById(productId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+                if (result == null) {
+                        ArchiveResponse resp = new ArchiveResponse();
+                        resp.setDeletedGuids(Collections.singletonList(productId));
+                        return ResponseEntity.ok(resp);
+                } else {
+                        return ResponseEntity.ok(result);
+                }
+        }
+
+        @Operation(
+                security = @SecurityRequirement(name = "bearerAuth"),
+                summary = "Restores Product by given guid.",
+                description = "This method can be used to restore Product by given guid.",
+                operationId = "restoreProduct"
+        )
+        @ApiResponses(value = {
+                @ApiResponse(responseCode = "200", description = "Product has been restored successfully for DRAFT domain."),
+                @ApiResponse(responseCode = "400", description = "Bad request"),
+                @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                @ApiResponse(responseCode = "403", description = "Forbidden"),
+                @ApiResponse(responseCode = "500", description = "Internal Server error")
+        })
+        @RequestMapping(value = "/restore/{product_id}", method = RequestMethod.POST, produces = { "application/json"})
+        @Secured(roles = {"product_r", "product_u"}, level = ALL_ROLES_STRICT)
+        public ResponseEntity<Product> restoreProduct(
+                @Parameter(description = "ID of the Product",
+                        example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+                @PathVariable("product_id") String productId,
+                @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+                Product result = productService.restoreProductById(productId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+                return new ResponseEntity<>(result, HttpStatus.OK);
         }
 }

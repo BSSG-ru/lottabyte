@@ -31,10 +31,11 @@ public class SearchableDataAsset extends SearchableArtifact {
     protected Boolean hasSample;
     protected Boolean hasStatistics;
     protected String roles;
+    protected String techName;
 
     @Builder
-    public SearchableDataAsset(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String systemId, String domainId, String entityId, String systemName, String domainName, String entityName, Integer rowsCount, Integer dataSize, Boolean hasQuery, Boolean hasSample, Boolean hasStatistics, String roles) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableDataAsset(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String systemId, String domainId, String entityId, String systemName, String domainName, String entityName, Integer rowsCount, Integer dataSize, Boolean hasQuery, Boolean hasSample, Boolean hasStatistics, String roles, String techName) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.systemId = systemId;
         this.domainId = domainId;
         this.entityId = entityId;
@@ -47,5 +48,6 @@ public class SearchableDataAsset extends SearchableArtifact {
         this.hasSample = hasSample;
         this.hasStatistics = hasStatistics;
         this.roles = roles;
+        this.techName = techName;
     }
 }

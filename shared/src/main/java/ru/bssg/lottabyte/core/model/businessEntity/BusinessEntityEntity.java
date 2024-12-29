@@ -20,8 +20,6 @@ public class BusinessEntityEntity extends Entity {
     private List<String> beLinkIds;
     private String domainId;
     private String parentId;
-    @JsonIgnore
-    protected String description;
     private String formula;
     private String examples;
     private String link;

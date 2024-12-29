@@ -10,6 +10,7 @@ import org.flowable.engine.delegate.JavaDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.bssg.lottabyte.core.model.ArtifactType;
+import ru.bssg.lottabyte.core.usermanagement.model.Language;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.coreapi.service.*;
 
@@ -49,6 +50,8 @@ public class RemoveArtifactService implements JavaDelegate {
             ud.setUid((String) execution.getVariable("ud_uid"));
             ud.setTenant((String) execution.getVariable("ud_tenant"));
             ud.setStewardId((String) execution.getVariable("ud_stewardid"));
+            ud.setLanguage( (Language)execution.getVariable("ud_language"));
+
             try {
                 switch (artifactType) {
                     case domain:

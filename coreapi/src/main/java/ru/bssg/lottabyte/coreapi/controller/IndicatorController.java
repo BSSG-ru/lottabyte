@@ -152,7 +152,7 @@ public class IndicatorController {
                         @RequestBody UpdatableIndicatorEntity indicatorEntity,
                         @RequestHeader HttpHeaders headers) throws LottabyteException {
 
-                return new ResponseEntity<>(indicatorService.patchIndicator(indicatorId, indicatorEntity,
+                return new ResponseEntity<>(indicatorService.patchIndicator(indicatorId, indicatorEntity, false,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
 
@@ -204,7 +204,7 @@ public class IndicatorController {
         @Secured(roles = { "indicator_r" }, level = ANY_ROLE)
         public ResponseEntity<PaginatedArtifactList<Indicator>> getIndicatorVersionsById(
                         @PathVariable("indicator_id") String indicatorId,
-                        @Parameter(description = "The maximum number of Indicator versions to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "10") Integer limit,
+                        @Parameter(description = "The maximum number of Indicator versions to return - must be at least 1 and cannot exceed 200. The default value is 1.") @RequestParam(value = "limit", defaultValue = "1000") Integer limit,
                         @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
                         @RequestHeader HttpHeaders headers) throws LottabyteException {
 
@@ -228,8 +228,28 @@ public class IndicatorController {
                         @Parameter(description = "ID of the Indicator", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
                         @Parameter(description = "Version ID of the Indicator", example = "1") @PathVariable("version_id") Integer versionId,
                         @RequestHeader HttpHeaders headers) throws LottabyteException {
-                return ResponseEntity.ok(indicatorService.getIndicatorVersionVersionById(indicatorId, versionId,
+                return ResponseEntity.ok(indicatorService.getIndicatorVersionById(indicatorId, versionId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+        }
+
+        @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Restores Indicator version by given guid and version id.", description = "This method can be used to restore Indicator history version by given guid and version id.", operationId = "restoreIndicatorVersionById")
+        @ApiResponses(value = {
+                @ApiResponse(responseCode = "200", description = "Operation successfully"),
+                @ApiResponse(responseCode = "400", description = "Bad request"),
+                @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                @ApiResponse(responseCode = "403", description = "Forbidden"),
+                @ApiResponse(responseCode = "404", description = "Indicator version not found"),
+                @ApiResponse(responseCode = "500", description = "Internal Server error")
+        })
+        @RequestMapping(value = "/{indicator_id}/versions/{version_id}/restore", method = RequestMethod.POST, produces = {
+                "application/json" })
+        @Secured(roles = { "indicator_u" }, level = ANY_ROLE)
+        public ResponseEntity<Indicator> restoreIndicatorVersionById(
+                @Parameter(description = "ID of the Indicator", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
+                @Parameter(description = "Version ID of the Indicator", example = "1") @PathVariable("version_id") Integer versionId,
+                @RequestHeader HttpHeaders headers) throws LottabyteException {
+                return ResponseEntity.ok(indicatorService.restoreIndicatorVersionById(indicatorId, versionId,
+                        jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
         }
 
         @Hidden
@@ -315,4 +335,59 @@ public class IndicatorController {
                                 userDetails), HttpStatus.OK);
         }
 
+        @Operation(
+                security = @SecurityRequirement(name = "bearerAuth"),
+                summary = "Archives Indicator by given guid.",
+                description = "This method can be used to archive Indicator by given guid.",
+                operationId = "archiveIndicator"
+        )
+        @ApiResponses(value = {
+                @ApiResponse(responseCode = "200", description = "Indicator has been archived successfully for DRAFT domain."),
+                @ApiResponse(responseCode = "400", description = "Bad request"),
+                @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                @ApiResponse(responseCode = "403", description = "Forbidden"),
+                @ApiResponse(responseCode = "500", description = "Internal Server error")
+        })
+        @RequestMapping(value = "/archive/{indicator_id}", method = RequestMethod.POST, produces = { "application/json"})
+        @Secured(roles = {"indicator_r", "indicator_u"}, level = ALL_ROLES_STRICT)
+        public ResponseEntity<?> archiveIndicator(
+                @Parameter(description = "ID of the Indicator",
+                        example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+                @PathVariable("indicator_id") String indicatorId,
+                @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+                Indicator result = indicatorService.archiveIndicatorById(indicatorId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+                if (result == null) {
+                        ArchiveResponse resp = new ArchiveResponse();
+                        resp.setDeletedGuids(Collections.singletonList(indicatorId));
+                        return ResponseEntity.ok(resp);
+                } else {
+                        return ResponseEntity.ok(result);
+                }
+        }
+
+        @Operation(
+                security = @SecurityRequirement(name = "bearerAuth"),
+                summary = "Restores Indicator by given guid.",
+                description = "This method can be used to restore Indicator by given guid.",
+                operationId = "restoreIndicator"
+        )
+        @ApiResponses(value = {
+                @ApiResponse(responseCode = "200", description = "Indicator has been restored successfully for DRAFT domain."),
+                @ApiResponse(responseCode = "400", description = "Bad request"),
+                @ApiResponse(responseCode = "401", description = "Unauthorized"),
+                @ApiResponse(responseCode = "403", description = "Forbidden"),
+                @ApiResponse(responseCode = "500", description = "Internal Server error")
+        })
+        @RequestMapping(value = "/restore/{indicator_id}", method = RequestMethod.POST, produces = { "application/json"})
+        @Secured(roles = {"indicator_r", "indicator_u"}, level = ALL_ROLES_STRICT)
+        public ResponseEntity<Indicator> restoreIndicator(
+                @Parameter(description = "ID of the Indicator",
+                        example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+                @PathVariable("indicator_id") String indicatorId,
+                @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+                Indicator result = indicatorService.restoreIndicatorById(indicatorId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+                return new ResponseEntity<>(result, HttpStatus.OK);
+        }
 }

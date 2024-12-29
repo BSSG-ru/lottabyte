@@ -57,7 +57,9 @@ public abstract class WorkflowableRepository<T extends ModeledObject<? extends E
 
         public PaginatedArtifactList<T> getVersionsById(String id, Integer offset, Integer limit, String url,
                         UserDetails userDetails) {
-                String subQuery = " select * from da_" + userDetails.getTenant() + "." + tableName + "_hist";
+                String subQuery = " select h.*, pu.display_name as modifier_display_name, pu.email as modifier_email, pu.description as modifier_description from da_"
+                        + userDetails.getTenant() + "." + tableName + "_hist h"
+                        + " left join usermgmt.platform_users pu ON CAST(pu.uid AS TEXT)=h.modifier ";
                 int total = jdbcTemplate.queryForObject("SELECT COUNT(id) FROM (" + subQuery + ") sq " +
                                 "WHERE id = ?", Integer.class, UUID.fromString(id));
                 List<T> resources = jdbcTemplate.query(
@@ -97,14 +99,14 @@ public abstract class WorkflowableRepository<T extends ModeledObject<? extends E
 
                 jdbcTemplate.update(
                                 "INSERT INTO da_" + userDetails.getTenant() + "." + tableName
-                                                + " (id, name, description, "
+                                                + " (id, name, description, short_description, "
                                                 + (extFields.length > 0
                                                                 ? Arrays.asList(extFields).stream().collect(
                                                                                 Collectors.joining(",", "", ","))
                                                                 : "")
                                                 + "state, workflow_task_id, published_id, published_version_id, "
                                                 + "created, creator, modified, modifier) "
-                                                + "SELECT ?, name, description, "
+                                                + "SELECT ?, name, description, short_description, "
                                                 + (extFields.length > 0
                                                                 ? Arrays.asList(extFields).stream().collect(
                                                                                 Collectors.joining(",", "", ","))
@@ -123,7 +125,7 @@ public abstract class WorkflowableRepository<T extends ModeledObject<? extends E
                 if (publishedId != null) {
                         jdbcTemplate.update(
                                         "UPDATE da_" + userDetails.getTenant() + "." + tableName
-                                                        + " tbl SET name = draft.name, description = draft.description, "
+                                                        + " tbl SET name = draft.name, description = draft.description, short_description = draft.short_description, "
                                                         + (extFields.length > 0
                                                                         ? Arrays.asList(extFields).stream()
                                                                                         .map(x -> x + "=draft." + x)
@@ -140,14 +142,14 @@ public abstract class WorkflowableRepository<T extends ModeledObject<? extends E
                 } else {
                         UUID newId = UUID.randomUUID();
                         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + "." + tableName
-                                        + " (id, name, description, "
+                                        + " (id, name, description, short_description, "
                                         + (extFields.length > 0
                                                         ? Arrays.asList(extFields).stream()
                                                                         .collect(Collectors.joining(",", "", ","))
                                                         : "")
                                         + "state, workflow_task_id, "
                                         + "published_id, published_version_id, ancestor_draft_id, created, creator, modified, modifier) "
-                                        + "SELECT ?, name, description, "
+                                        + "SELECT ?, name, description, short_description, "
                                         + (extFields.length > 0
                                                         ? Arrays.asList(extFields).stream()
                                                                         .collect(Collectors.joining(",", "", ","))
@@ -165,4 +167,7 @@ public abstract class WorkflowableRepository<T extends ModeledObject<? extends E
                 return res;
         }
 
+        public void archive(String id, UserDetails userDetails) {
+                jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + "." + tableName + " SET state='ARCHIVE' WHERE id=?", UUID.fromString(id));
+        }
 }

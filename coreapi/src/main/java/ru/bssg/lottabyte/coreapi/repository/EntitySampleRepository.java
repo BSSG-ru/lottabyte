@@ -2,6 +2,7 @@ package ru.bssg.lottabyte.coreapi.repository;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
@@ -13,8 +14,13 @@ import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.dal.FlatItemRowMapper;
 import ru.bssg.lottabyte.core.model.*;
 
+import ru.bssg.lottabyte.core.model.dataentity.DataEntity;
+import ru.bssg.lottabyte.core.model.dataentity.DataEntityAttribute;
+import ru.bssg.lottabyte.core.model.dataentity.DataEntityAttributeEntity;
+import ru.bssg.lottabyte.core.model.dataentity.DataEntityEntity;
 import ru.bssg.lottabyte.core.model.entityQuery.EntityQuery;
 import ru.bssg.lottabyte.core.model.entitySample.*;
+import ru.bssg.lottabyte.core.model.reference.ReferenceType;
 import ru.bssg.lottabyte.core.ui.model.*;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySample;
@@ -35,6 +41,8 @@ import java.util.UUID;
 import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
 
 @Repository
 @Slf4j
@@ -83,11 +91,7 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
             md.setEffectiveStartDate(rs.getTimestamp("history_start").toLocalDateTime());
             md.setEffectiveEndDate(rs.getTimestamp("history_end").toLocalDateTime());
 
-            try {
-                esp = new EntitySampleProperty(espEntity, md);
-            } catch (LottabyteException e) {
-                log.error(e.getMessage(), e);
-            }
+            esp = new EntitySampleProperty(espEntity, md);
             return esp;
         }
 
@@ -104,8 +108,13 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
             FlatEntitySampleProperty flatEntitySampleProperty = new FlatEntitySampleProperty(
                     EntitySamplePropertyRowMapper.mapEntitySamplePropertyRow(rs));
 
-            flatEntitySampleProperty.setEntityAttributeName(rs.getString("entity_attribute_name"));
-            flatEntitySampleProperty.setEntityAttributeId(rs.getString("entity_attribute_id"));
+            try {
+                flatEntitySampleProperty.setEntityAttributeName(rs.getString("entity_attribute_name"));
+                flatEntitySampleProperty.setEntityAttributeId(rs.getString("entity_attribute_id"));
+                flatEntitySampleProperty.setEntitySampleId(rs.getString("entity_sample_id"));
+                flatEntitySampleProperty.setMetaColumnId(rs.getString("meta_column_id"));
+                flatEntitySampleProperty.setMetaColumnName(rs.getString("meta_column_name"));
+            } catch (Exception e) {}
 
             return flatEntitySampleProperty;
         }
@@ -187,11 +196,101 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
                 UUID.fromString(propertyId));
     }
 
+    public List<EntitySample> getSamplesByEntityAttrId(String attrId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT esp.* FROM da_" + userDetails.getTenant() + ".entity_attribute_to_sample_property t JOIN da_"
+                + userDetails.getTenant() + ".entity_sample_property esp ON t.entity_sample_property_id=esp.id "
+                + " JOIN da_" + userDetails.getTenant() + ".entity_sample es ON esp.entity_sample_id=es.id "
+                + "WHERE t.entity_attribute_id = ?", new RowMapper<EntitySample>() {
+            @Override
+            public EntitySample mapRow(ResultSet rs, int rowNum) throws SQLException {
+                EntitySampleEntity e = new EntitySampleEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                return new EntitySample(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(attrId));
+    }
+
+    public List<EntitySampleProperty> getSamplePropertiesByEntityAttrId(String attrId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT esp.* FROM da_" + userDetails.getTenant() + ".entity_attribute_to_sample_property t JOIN da_"
+                + userDetails.getTenant() + ".entity_sample_property esp ON t.entity_sample_property_id=esp.id "
+                + "WHERE t.entity_attribute_id = ?", new RowMapper<EntitySampleProperty>() {
+            @Override
+            public EntitySampleProperty mapRow(ResultSet rs, int rowNum) throws SQLException {
+                EntitySamplePropertyEntity e = new EntitySamplePropertyEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                e.setEntitySampleId(rs.getString("entity_sample_id"));
+                return new EntitySampleProperty(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(attrId));
+    }
+
     public boolean existsSamplePropertyByEntityAttributeId(String entityId, UserDetails userDetails) {
         return jdbcTemplate.queryForObject(
                 "SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".entity_attribute_to_sample_property " +
                         "WHERE entity_attribute_id = ?) AS EXISTS",
                 Boolean.class, UUID.fromString(entityId));
+    }
+
+    public List<DataEntity> getEntitiesByPropertyId(String propertyId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT DISTINCT e.id, e.name, e.creator, e.created, e.modifier, e.modified, e.history_start, e.history_end FROM da_" + userDetails.getTenant() + ".entity_attribute_to_sample_property t JOIN da_"
+                + userDetails.getTenant() + ".entity_attribute ea ON t.entity_attribute_id=ea.id JOIN da_" + userDetails.getTenant()
+                + ".entity e ON ea.entity_id=e.id AND e.state='PUBLISHED' "
+                + "WHERE t.entity_sample_property_id = ?", new RowMapper<DataEntity>() {
+            @Override
+            public DataEntity mapRow(ResultSet rs, int rowNum) throws SQLException {
+                DataEntityEntity e = new DataEntityEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                return new DataEntity(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(propertyId));
+    }
+
+    public List<DataEntity> getEntitiesBySampleId(String sampleId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT DISTINCT e.id, e.name, e.creator, e.created, e.modifier, e.modified, e.history_start, e.history_end FROM da_" + userDetails.getTenant() + ".entity_attribute_to_sample_property t JOIN da_"
+                + userDetails.getTenant() + ".entity_attribute ea ON t.entity_attribute_id=ea.id JOIN da_" + userDetails.getTenant()
+                + ".entity e ON ea.entity_id=e.id AND e.state='PUBLISHED' "
+                + " JOIN da_" + userDetails.getTenant() + ".entity_sample_property esp ON esp.id=t.entity_sample_property_id"
+                + " WHERE esp.entity_sample_id = ?", new RowMapper<DataEntity>() {
+            @Override
+            public DataEntity mapRow(ResultSet rs, int rowNum) throws SQLException {
+                DataEntityEntity e = new DataEntityEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                return new DataEntity(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(sampleId));
+    }
+
+    public List<DataEntityAttribute> getEntityAttrsByPropertyId(String propertyId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT ea.* FROM da_" + userDetails.getTenant() + ".entity_attribute_to_sample_property t JOIN da_"
+                + userDetails.getTenant() + ".entity_attribute ea ON t.entity_attribute_id=ea.id "
+                + "WHERE t.entity_sample_property_id = ?", new RowMapper<DataEntityAttribute>() {
+            @Override
+            public DataEntityAttribute mapRow(ResultSet rs, int rowNum) throws SQLException {
+                DataEntityAttributeEntity e = new DataEntityAttributeEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                return new DataEntityAttribute(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(propertyId));
+    }
+
+    public List<DataEntityAttribute> getEntityAttrsBySampleId(String sampleId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT ea.* FROM da_" + userDetails.getTenant() + ".entity_attribute_to_sample_property t JOIN da_"
+                + userDetails.getTenant() + ".entity_attribute ea ON t.entity_attribute_id=ea.id "
+                + " JOIN da_" + userDetails.getTenant() + ".entity_sample_property esp ON esp.id=t.entity_sample_property_id"
+                + " WHERE esp.entity_sample_id = ?", new RowMapper<DataEntityAttribute>() {
+            @Override
+            public DataEntityAttribute mapRow(ResultSet rs, int rowNum) throws SQLException {
+                DataEntityAttributeEntity e = new DataEntityAttributeEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                return new DataEntityAttribute(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(sampleId));
     }
 
     public boolean existsSamplePropertyBySamplePropertyId(String entityId, UserDetails userDetails) {
@@ -353,6 +452,29 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
                     }
                 }
             }
+
+            if (entitySampleProperty.getMappedMetaColumnId() != null) {
+                String currMetaColId;
+                try {
+                    currMetaColId = jdbcTemplate.queryForObject("SELECT target_id FROM da_" +
+                                    userDetails.getTenant() + ".reference WHERE source_id=? AND reference_type='SAMPLE_PROPERTY_TO_META_COLUMN'",
+                            String.class, UUID.fromString(esp.getId()));
+                } catch (EmptyResultDataAccessException e) {
+                    currMetaColId = "";
+                }
+
+                if (!currMetaColId.equals(entitySampleProperty.getMappedMetaColumnId())) {
+                    jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".reference WHERE source_id=? " +
+                            "AND reference_type='SAMPLE_PROPERTY_TO_META_COLUMN'", UUID.fromString(esp.getId()));
+                    if (!entitySampleProperty.getMappedMetaColumnId().isEmpty())
+                        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".reference (id, source_id, " +
+                            "source_artifact_type, target_id, target_artifact_type, reference_type, created, creator, " +
+                            "modified, modifier) VALUES (?,?,?,?,?,?,?,?,?,?)", UUID.randomUUID(), UUID.fromString(esp.getId()),
+                            ArtifactType.entity_sample_property.getText(), UUID.fromString(entitySampleProperty.getMappedMetaColumnId()),
+                            ArtifactType.meta_column.getText(), ReferenceType.SAMPLE_PROPERTY_TO_META_COLUMN.name(),
+                            now, userDetails.getUid(), now, userDetails.getUid());
+                }
+            }
         }
         return esp;
     }
@@ -447,6 +569,19 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
         return entitySampleList.stream().findFirst().orElse(null);
     }
 
+    public List<EntitySample> getEntitySamplesByEntityId(String entityId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".entity_sample " +
+                "WHERE entity_id = ?", new RowMapper<EntitySample>() {
+            @Override
+            public EntitySample mapRow(ResultSet rs, int rowNum) throws SQLException {
+                EntitySampleEntity e = new EntitySampleEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                return new EntitySample(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(entityId));
+    }
+
     public boolean existsEntitySampleWithEntity(String entityId, UserDetails userDetails) {
         return jdbcTemplate.queryForObject(
                 "SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".entity_sample " +
@@ -507,7 +642,7 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
                 +
                 "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
                 uuidSample, newEntitySampleEntity.getName(), newEntitySampleEntity.getDescription(),
-                newEntitySampleEntity.getSampleType().toString(),
+                (newEntitySampleEntity.getSampleType() == null ? null : newEntitySampleEntity.getSampleType().toString()),
                 ts, ts, userDetails.getUid(), ts, userDetails.getUid(),
                 UUID.fromString(newEntitySampleEntity.getEntityId()),
                 UUID.fromString(newEntitySampleEntity.getSystemId()),
@@ -567,11 +702,11 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
         }
         if (entitySampleEntity.getEntityId() != null) {
             sets.add("entity_id = ?");
-            params.add(UUID.fromString(entitySampleEntity.getEntityId()));
+            params.add(entitySampleEntity.getEntityId().isEmpty() ? null : UUID.fromString(entitySampleEntity.getEntityId()));
         }
         if (entitySampleEntity.getSystemId() != null) {
             sets.add("system_id = ?");
-            params.add(UUID.fromString(entitySampleEntity.getSystemId()));
+            params.add(entitySampleEntity.getSystemId().isEmpty() ? null : UUID.fromString(entitySampleEntity.getSystemId()));
         }
         if (entitySampleEntity.getRoles() != null) {
             sets.add("roles = ?");
@@ -579,7 +714,7 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
         }
         if (entitySampleEntity.getEntityQueryId() != null) {
             sets.add("entity_query_id = ?");
-            params.add(UUID.fromString(entitySampleEntity.getEntityQueryId()));
+            params.add(entitySampleEntity.getEntityQueryId().isEmpty() ? null : UUID.fromString(entitySampleEntity.getEntityQueryId()));
             sets.add("entity_query_version_id = ?");
             Integer queryVersionId = null;
             if (!entitySampleEntity.getEntityQueryId().isEmpty()) {
@@ -631,7 +766,7 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
 
     public EntitySample getEntitySampleByQueryId(String queryId, UserDetails userDetails) {
         List<EntitySample> entitySampleList = jdbcTemplate.query(
-                "SELECT id, \"name\", description, entity_id, system_id, entity_query_id, sample_type, last_updated, history_start, history_end, version_id, created, creator, modified, modifier, is_main "
+                "SELECT id, \"name\", description, entity_id, system_id, entity_query_id, sample_type, last_updated, history_start, history_end, version_id, created, creator, modified, modifier, is_main, roles "
                         +
                         "FROM da_" + userDetails.getTenant() + ".entity_sample " +
                         "WHERE entity_query_id = ? " +
@@ -695,7 +830,7 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
             where += " tbl1.system_id IN (SELECT system_id FROM da_" + userDetails.getTenant() + ".system_to_domain WHERE domain_id IN ('" + StringUtils.join(userDetails.getUserDomains(), "','") + "'))";
         }
 
-        String queryForItems = "SELECT distinct tbl1.has_access, tbl1.id,tbl1.name,tbl1.description,tbl1.entity_id,tbl1.system_id,tbl1.entity_query_id,"
+        String queryForItems = "SELECT distinct tbl1.has_access, tbl1.id,tbl1.name,tbl1.description,tbl1.short_description,tbl1.entity_id,tbl1.system_id,tbl1.entity_query_id,"
                 + "tbl1.sample_type,tbl1.last_updated,tbl1.history_start,tbl1.history_end,tbl1.version_id,tbl1.created,"
                 + "tbl1.creator,tbl1.modified,tbl1.modifier,tbl1.is_main, system.name as system_name, entity.name as entity_name, entity_query.name as entity_query_name"
                 + " FROM (" + subQuery + ") as tbl1 " + join
@@ -824,14 +959,27 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
         if (userDetails.getStewardId() != null && searchRequest.getLimitSteward() != null
                 && searchRequest.getLimitSteward())
             subQuery = subQuery + QueryHelper.getWhereIdInQuery(ArtifactType.entity_sample_property, userDetails);
+
+        if (where.isEmpty())
+            where = " WHERE (e.state IS NULL OR e.state='PUBLISHED')";
+        else
+            where += " AND (e.state IS NULL OR e.state='PUBLISHED')";
+
         String queryForItems = "SELECT tbl1.id,tbl1.name,tbl1.description,tbl1.path_type,tbl1.path,tbl1.entity_sample_id,"
                 + "tbl1.history_start,tbl1.history_end,tbl1.version_id,tbl1.created,tbl1.creator,tbl1.property_type,"
-                + "tbl1.modified,tbl1.modifier, entity_attribute.name AS entity_attribute_name, entity_attribute.id AS entity_attribute_id"
+                + "tbl1.modified,tbl1.modifier, entity_attribute.name AS entity_attribute_name, "
+                + "entity_attribute.id AS entity_attribute_id, meta_column.id AS meta_column_id, (meta_schema.name || '.' || meta_object.name || '.' || meta_column.name || ' (версия ' || meta_database.version_id || ')') AS meta_column_name"
                 + " FROM (" + subQuery + ") as tbl1 " + join
                 + " LEFT JOIN da_" + userDetails.getTenant()
                 + ".entity_attribute_to_sample_property easp ON easp.entity_sample_property_id=tbl1.id"
                 + " LEFT JOIN da_" + userDetails.getTenant()
                 + ".entity_attribute entity_attribute ON easp.entity_attribute_id=entity_attribute.id "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".entity e ON entity_attribute.entity_id=e.id "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r2 ON r2.source_id=tbl1.id AND r2.reference_type='SAMPLE_PROPERTY_TO_META_COLUMN' "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_column meta_column ON r2.target_id=meta_column.id"
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_object meta_object ON meta_column.meta_object_id=meta_object.id"
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_object meta_schema ON meta_object.parent_id=meta_schema.id "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_database ON meta_object.meta_database_id=meta_database.id AND meta_object.version_id=meta_database.version_id"
                 + where + " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
                 + searchRequest.getLimit();
 
@@ -843,6 +991,12 @@ public class EntitySampleRepository extends GenericArtifactRepository<EntitySamp
                 + ".entity_attribute_to_sample_property easp ON easp.entity_sample_property_id=tbl1.id"
                 + " LEFT JOIN da_" + userDetails.getTenant()
                 + ".entity_attribute entity_attribute ON easp.entity_attribute_id=entity_attribute.id "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".entity e ON entity_attribute.entity_id=e.id "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r2 ON r2.source_id=tbl1.id AND r2.reference_type='SAMPLE_PROPERTY_TO_META_COLUMN' "
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_column meta_column ON r2.target_id=meta_column.id"
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_object meta_object ON meta_column.meta_object_id=meta_object.id"
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_object meta_schema ON meta_object.parent_id=meta_schema.id"
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_database ON meta_object.meta_database_id=meta_database.id AND meta_object.version_id=meta_database.version_id"
                 + where;
         final int[] count = { 0 };
         jdbcTemplate.query(

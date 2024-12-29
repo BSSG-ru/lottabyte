@@ -30,6 +30,7 @@ public class UpdatableDataEntityEntity extends DataEntityEntity {
         if (fromCopy.getSystemIds() != null) {
             this.setSystemIds(new ArrayList<>(fromCopy.getSystemIds()));
         }
+        this.setTechName(fromCopy.getTechName());
     }
 
 }

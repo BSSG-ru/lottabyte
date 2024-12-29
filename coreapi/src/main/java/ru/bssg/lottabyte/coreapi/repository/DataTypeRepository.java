@@ -19,6 +19,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class DataTypeRepository extends GenericArtifactRepository<DataType> {

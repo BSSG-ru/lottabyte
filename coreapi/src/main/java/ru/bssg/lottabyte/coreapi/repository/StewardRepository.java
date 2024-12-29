@@ -30,6 +30,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class StewardRepository extends GenericArtifactRepository<Steward> {
@@ -117,8 +119,9 @@ public class StewardRepository extends GenericArtifactRepository<Steward> {
     }
 
     public List<Steward> getStewardsByDomainId(String domainId, UserDetails userDetails) {
-        return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".steward join da_" + userDetails.getTenant() + ".steward_to_domain "
-                + " on steward.id = steward_to_domain.steward_id WHERE steward_to_domain.domain_id = ?", new StewardRowMapper(),
+        return jdbcTemplate.query("SELECT s.* FROM da_" + userDetails.getTenant() + ".steward s join da_" + userDetails.getTenant() + ".steward_to_domain s2d "
+                + " on s.id = s2d.steward_id JOIN usermgmt.platform_users pu ON pu.uid = s.user_id AND pu.approval_status='approved'"
+                + " AND pu.current_account_status='enabled' WHERE s2d.domain_id = ?", new StewardRowMapper(),
                 UUID.fromString(domainId));
     }
 
@@ -219,15 +222,15 @@ public class StewardRepository extends GenericArtifactRepository<Steward> {
                     args.toArray());
         }
 
-        List<String> domainIds = jdbcTemplate.queryForList("SELECT domain_id FROM da_" + userDetails.getTenant() + ".steward_to_domain WHERE steward_id=?",
-            String.class, UUID.fromString(stewardId));
-
-        for (String did : domainIds) {
-            if (stewardEntity.getDomains() != null && !stewardEntity.getDomains().contains(did))
-                jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".steward_to_domain WHERE steward_id=? AND domain_id=?", UUID.fromString(stewardId), UUID.fromString(did));
-        }
-
         if (stewardEntity.getDomains() != null) {
+            List<String> domainIds = jdbcTemplate.queryForList("SELECT domain_id FROM da_" + userDetails.getTenant() + ".steward_to_domain WHERE steward_id=?",
+                String.class, UUID.fromString(stewardId));
+
+            for (String did : domainIds) {
+                if (stewardEntity.getDomains() != null && !stewardEntity.getDomains().contains(did))
+                    jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".steward_to_domain WHERE steward_id=? AND domain_id=?", UUID.fromString(stewardId), UUID.fromString(did));
+            }
+
             for (String did : stewardEntity.getDomains()) {
                 if (!domainIds.contains(did))
                     jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".steward_to_domain (id, steward_id, domain_id, created, creator, modified, modifier) VALUES (?,?,?,?,?,?,?)",
@@ -258,9 +261,9 @@ public class StewardRepository extends GenericArtifactRepository<Steward> {
         List<FlatSteward> flatItems =
                 jdbcTemplate.query("SELECT * FROM (" + subQuery + ") as tbl1 " + where
                         + " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
-                        + searchRequest.getLimit(), new FlatStewardRowMapper());
+                        + searchRequest.getLimit(), new FlatStewardRowMapper(), whereValues.toArray());
 
-        Integer total = jdbcTemplate.queryForObject("SELECT COUNT(id) FROM (" + subQuery + ") as tbl1 " + where, Integer.class);
+        Integer total = jdbcTemplate.queryForObject("SELECT COUNT(id) FROM (" + subQuery + ") as tbl1 " + where, Integer.class, whereValues.toArray());
 
         SearchResponse<FlatSteward> res = new SearchResponse<>(total, searchRequest.getLimit(), searchRequest.getOffset(), flatItems);
 

@@ -18,8 +18,8 @@ public class SearchableDataEntityAttribute extends SearchableArtifact {
     protected List<String> mappedSamplePropertyIds;
 
     @Builder
-    public SearchableDataEntityAttribute(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String entityId, String enumerationId, DataEntityAttributeType attributeType, List<String> mappedSamplePropertyIds) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableDataEntityAttribute(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String entityId, String enumerationId, DataEntityAttributeType attributeType, List<String> mappedSamplePropertyIds) {
+        super(id, versionId, name, description, "", tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.entityId = entityId;
         this.enumerationId = enumerationId;
         this.attributeType = attributeType;

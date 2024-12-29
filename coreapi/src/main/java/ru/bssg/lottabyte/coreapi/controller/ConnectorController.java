@@ -143,7 +143,7 @@ public class ConnectorController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("connector_id") String connectorId,
             @Parameter(description = "The maximum number of Connector Params to return - must be at least 1 and cannot exceed 200. The default value is 10.")
-            @RequestParam(value="limit", defaultValue = "10") Integer limit,
+            @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @RequestHeader HttpHeaders headers) throws LottabyteException {

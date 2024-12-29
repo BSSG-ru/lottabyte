@@ -24,6 +24,8 @@ import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class SystemRepository extends WorkflowableRepository<System> {
@@ -44,6 +46,7 @@ public class SystemRepository extends WorkflowableRepository<System> {
             systemEntity.setConnectorId(rs.getString("connector_id"));
             systemEntity.setName(rs.getString("name"));
             systemEntity.setDescription(rs.getString("description"));
+            systemEntity.setShortDescription(rs.getString("short_description"));
             systemEntity.setSystemType(rs.getString("system_type"));
 
             return new System(systemEntity, new WorkflowableMetadata(rs, systemEntity.getArtifactType()));
@@ -81,7 +84,7 @@ public class SystemRepository extends WorkflowableRepository<System> {
         }
     }
 
-    private static class FlatSystemRowMapper extends FlatItemRowMapper<FlatSystem> {
+    public static class FlatSystemRowMapper extends FlatItemRowMapper<FlatSystem> {
 
         public FlatSystemRowMapper() { super(FlatSystem::new); }
 
@@ -227,9 +230,9 @@ public class SystemRepository extends WorkflowableRepository<System> {
         UUID newId = newSystemEntity.getId() != null ? UUID.fromString(newSystemEntity.getId()) : UUID.randomUUID();
         Timestamp ts = new Timestamp(new java.util.Date().getTime());
         String query = "INSERT INTO da_" + userDetails.getTenant() + ".\"system\" " +
-                "(id, \"name\", description, system_type, connector_id, system_folder_id, state, workflow_task_id, created, creator, modified, modifier) " +
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        jdbcTemplate.update(query, newId, newSystemEntity.getName(), newSystemEntity.getDescription(), newSystemEntity.getSystemType(),
+                "(id, \"name\", description, short_description, system_type, connector_id, system_folder_id, state, workflow_task_id, created, creator, modified, modifier) " +
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        jdbcTemplate.update(query, newId, newSystemEntity.getName(), newSystemEntity.getDescription(), newSystemEntity.getShortDescription(), newSystemEntity.getSystemType(),
                 newSystemEntity.getConnectorId() != null ? UUID.fromString(newSystemEntity.getConnectorId()) : null,
                 newSystemEntity.getSystemFolderId() != null ? UUID.fromString(newSystemEntity.getSystemFolderId()) : null,
                 ArtifactState.DRAFT.toString(),
@@ -295,6 +298,10 @@ public class SystemRepository extends WorkflowableRepository<System> {
         if (systemEntity.getDescription() != null) {
             sets.add("description = ?");
             params.add(systemEntity.getDescription());
+        }
+        if (systemEntity.getShortDescription() != null) {
+            sets.add("short_description = ?");
+            params.add(systemEntity.getShortDescription());
         }
         if (systemEntity.getSystemType() != null) {
             sets.add("system_type = ?");
@@ -499,17 +506,17 @@ public class SystemRepository extends WorkflowableRepository<System> {
     public String publishSystemDraft(String draftSystemId, String publishedSystemId, UserDetails userDetails) {
         String res = null;
         if (publishedSystemId != null) {
-            jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".system d SET name = draft.name, description = draft.description, "
+            jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".system d SET name = draft.name, description = draft.description, short_description = draft.short_description, "
                             + " system_type = draft.system_type, connector_id = draft.connector_id, system_folder_id = draft.system_folder_id, "
                             + " ancestor_draft_id = draft.id, modified = draft.modified, modifier = draft.modifier "
-                            + " from (select id, name, description, system_type, connector_id, system_folder_id, modified, modifier FROM da_" + userDetails.getTenant() + ".system) as draft where d.id = ? and draft.id = ?",
+                            + " from (select id, name, description, short_description, system_type, connector_id, system_folder_id, modified, modifier FROM da_" + userDetails.getTenant() + ".system) as draft where d.id = ? and draft.id = ?",
                     UUID.fromString(publishedSystemId), UUID.fromString(draftSystemId));
             res = publishedSystemId;
         } else {
             UUID newId = UUID.randomUUID();
-            jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".system (id, name, description, system_type, connector_id, system_folder_id, state, workflow_task_id, "
+            jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".system (id, name, description, short_description, system_type, connector_id, system_folder_id, state, workflow_task_id, "
                             + "published_id, published_version_id, ancestor_draft_id, created, creator, modified, modifier) "
-                            + "SELECT ?, name, description, system_type, connector_id, system_folder_id, ?, ?, ?, ?, ?, created, creator, modified, modifier "
+                            + "SELECT ?, name, description, short_description, system_type, connector_id, system_folder_id, ?, ?, ?, ?, ?, created, creator, modified, modifier "
                             + "FROM da_" + userDetails.getTenant() + ".system where id = ?",
                     newId, ArtifactState.PUBLISHED.toString(), null, null, null,
                     UUID.fromString(draftSystemId), UUID.fromString(draftSystemId));
@@ -522,12 +529,18 @@ public class SystemRepository extends WorkflowableRepository<System> {
 
     public String createSystemDraft(String publishedSystemId, String draftId, String workflowTaskId, UserDetails userDetails) {
         UUID newId = draftId != null ? UUID.fromString(draftId) : UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".system (id, name, description, system_type, connector_id, system_folder_id, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier) " +
-                        "SELECT ?, name, description, system_type, connector_id, system_folder_id, ?, ?, id, version_id, created, creator, modified, modifier FROM da_" + userDetails.getTenant() + ".system where id = ?",
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".system (id, name, description, short_description, system_type, connector_id, system_folder_id, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier) " +
+                        "SELECT ?, name, description, short_description, system_type, connector_id, system_folder_id, ?, ?, id, version_id, created, creator, modified, modifier FROM da_" + userDetails.getTenant() + ".system where id = ?",
                 newId, ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
                 UUID.fromString(publishedSystemId));
         return newId.toString();
     }
 
+    public boolean existEntitiesInSystem(String systemId, UserDetails userDetails) {
+        return jdbcTemplate.queryForObject(
+                "SELECT EXISTS(select id from da_" + userDetails.getTenant()
+                        + ".entity_to_system where system_id = ?) as exists",
+                Boolean.class, UUID.fromString(systemId));
+    }
 }

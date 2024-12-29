@@ -23,9 +23,7 @@ public class UpdatableTaskEntity extends TaskEntity {
         this.setDescription(fromCopy.getDescription());
         this.setSystemConnectionId(fromCopy.getSystemConnectionId());
         this.setQueryId(fromCopy.getQueryId());
-        this.setEnabled(fromCopy.getEnabled());
-        this.setScheduleType(fromCopy.getScheduleType());
-        this.setScheduleParams(fromCopy.getScheduleParams());
+        this.setIsMetadataTask(fromCopy.getIsMetadataTask());
     }
 
 }

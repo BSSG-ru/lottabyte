@@ -1,6 +1,5 @@
 package ru.bssg.lottabyte.usermanagement.config;
 
-import lombok.EqualsAndHashCode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,6 +19,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.stereotype.Component;
 
+import org.springframework.web.cors.CorsConfiguration;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtAuthenticationEntryPoint;
 import ru.bssg.lottabyte.usermanagement.service.UserService;
 
@@ -54,7 +54,6 @@ import java.util.*;
 @Lazy
 @Data
 @Slf4j
-@EqualsAndHashCode(callSuper=false)
 public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
         @Autowired
@@ -67,10 +66,17 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
         @Override
         protected void configure(HttpSecurity http) throws Exception {
+                CorsConfiguration config = new CorsConfiguration();
+                config.addAllowedOrigin("*");
+                config.addAllowedHeader("*");
+                config.addAllowedMethod("*");
+                config.setAllowCredentials(false);
+
                 http.requestMatcher(new OAuthRequestedMatcher())
                         .csrf()
                                 .disable()
                         .cors()
+                                .configurationSource((option) -> { return config; })
                                 .and()
                         .exceptionHandling()
                                 .authenticationEntryPoint(unauthorizedHandler)

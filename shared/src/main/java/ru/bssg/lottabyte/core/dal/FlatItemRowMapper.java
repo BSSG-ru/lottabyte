@@ -20,6 +20,7 @@ public class FlatItemRowMapper<T extends FlatModeledObject> implements RowMapper
         t.setId(rs.getString("id"));
         t.setName(rs.getString("name"));
         t.setDescription(rs.getString("description"));
+        t.setShortDescription(rs.getString("short_description"));
         try{
             rs.findColumn("version_id");
             if (rs.getObject("version_id") != null)

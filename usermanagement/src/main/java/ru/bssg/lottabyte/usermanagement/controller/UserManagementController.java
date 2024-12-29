@@ -31,7 +31,6 @@ import java.util.Objects;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES_STRICT;
 
-@CrossOrigin(origins = { "${app.security.cors.origin}" })
 @RestController
 @RequestMapping("/v1/usermgmt")
 public class UserManagementController {
@@ -151,6 +150,7 @@ public class UserManagementController {
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
+                //
                 return ResponseEntity.ok(userService.getUserById(userId, userDetails.getTenant()));
         }
 

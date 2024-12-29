@@ -12,10 +12,13 @@ import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.FlatRelation;
-import ru.bssg.lottabyte.core.model.HttpStatus;
 import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
+import ru.bssg.lottabyte.core.model.artifact.Artifact;
 import ru.bssg.lottabyte.core.model.dataasset.DataAsset;
 import ru.bssg.lottabyte.core.model.domain.*;
+import ru.bssg.lottabyte.core.model.reference.Reference;
+import ru.bssg.lottabyte.core.model.reference.ReferenceType;
+import ru.bssg.lottabyte.core.model.reference.UpdatableReferenceEntity;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowTask;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowType;
 import ru.bssg.lottabyte.core.ui.model.*;
@@ -24,6 +27,7 @@ import ru.bssg.lottabyte.core.util.ServiceUtils;
 import ru.bssg.lottabyte.coreapi.repository.*;
 import ru.bssg.lottabyte.coreapi.util.Helper;
 
+import java.sql.Ref;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -42,14 +46,17 @@ public class DomainService extends WorkflowableService<Domain> {
     private final StewardService stewardService;
     private final WorkflowService workflowService;
     private final ArtifactService artifactService;
+    private final ReferenceService referenceService;
+    private final UserFavService userFavService;
 
     private final ArtifactType serviceArtifactType = ArtifactType.domain;
 
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
             new SearchColumn("description", SearchColumn.ColumnType.Text),
+            new SearchColumn("short_description", SearchColumn.ColumnType.Text),
             new SearchColumn("modified", SearchColumn.ColumnType.Timestamp),
-            new SearchColumn("stewards", SearchColumn.ColumnType.Array),
+            new SearchColumn("stewards", SearchColumn.ColumnType.Text),
             new SearchColumn("tags", SearchColumn.ColumnType.Text),
             new SearchColumn("workflow_state", SearchColumn.ColumnType.Text)
     };
@@ -59,14 +66,16 @@ public class DomainService extends WorkflowableService<Domain> {
     @Autowired
     @Lazy
     public DomainService(DomainRepository domainRepository, TagService tagService,
-            ElasticsearchService elasticsearchService, DataAssetRepository dataAssetRepository,
-            SystemRepository systemRepository, WorkflowService workflowService,
-            StewardService stewardService, ProductRepository productRepository,
-            BusinessEntityRepository businessEntityRepository,
-            IndicatorRepository indicatorRepository,
-            UserRepository userRepository,
-            ArtifactService artifactService) {
-        super(domainRepository, workflowService, tagService, ArtifactType.domain, elasticsearchService);
+                         ElasticsearchService elasticsearchService, DataAssetRepository dataAssetRepository,
+                         SystemRepository systemRepository, WorkflowService workflowService,
+                         StewardService stewardService, ProductRepository productRepository,
+                         BusinessEntityRepository businessEntityRepository,
+                         IndicatorRepository indicatorRepository,
+                         UserRepository userRepository,
+                         ArtifactService artifactService,
+                         ReferenceService referenceService,
+                         UserFavService userFavService) {
+        super(domainRepository, workflowService, tagService, ArtifactType.domain, elasticsearchService, referenceService);
         this.domainRepository = domainRepository;
         this.tagService = tagService;
         this.elasticsearchService = elasticsearchService;
@@ -79,6 +88,8 @@ public class DomainService extends WorkflowableService<Domain> {
         this.indicatorRepository = indicatorRepository;
         this.userRepository = userRepository;
         this.artifactService = artifactService;
+        this.referenceService = referenceService;
+        this.userFavService = userFavService;
     }
 
     // Wf interface
@@ -136,8 +147,23 @@ public class DomainService extends WorkflowableService<Domain> {
         elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(publishedId), userDetails);
     }
 
-    public Domain wfPublish(String draftDomainId, UserDetails userDetails) throws LottabyteException {
+    public Domain wfSend(String draftDomainId, UserDetails userDetails) throws LottabyteException {
         Domain draft = domainRepository.getById(draftDomainId, userDetails);
+        if (draft == null)
+            throw new LottabyteException(
+                    Message.LBE03004,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftDomainId);
+        if (domainRepository.domainNameExists(draft.getEntity().getName(), null, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00108,
+                    userDetails.getLanguage(),
+                    draft.getEntity().getName());
+        return draft;
+    }
+
+    public Domain wfPublish(String draftDomainId, UserDetails userDetails) throws LottabyteException {
+        Domain draft = getDomainById(draftDomainId, userDetails);
         String publishedId = ((WorkflowableMetadata) draft.getMetadata()).getPublishedId();
         if (draft == null)
             throw new LottabyteException(
@@ -152,7 +178,7 @@ public class DomainService extends WorkflowableService<Domain> {
 
         if (publishedId == null) {
             String newPublishedId = domainRepository.publishDomainDraft(draftDomainId, null, userDetails);
-            addDomainLinks(newPublishedId, draft.getEntity(), userDetails);
+            addDomainLinks(newPublishedId, draft.getEntity(), newPublishedId, userDetails);
             tagService.mergeTags(draftDomainId, serviceArtifactType, newPublishedId, serviceArtifactType, userDetails);
             Domain d = getDomainById(newPublishedId, userDetails);
             elasticsearchService.insertElasticSearchEntity(
@@ -188,6 +214,14 @@ public class DomainService extends WorkflowableService<Domain> {
         if (md.getState() != null && md.getState().equals(ArtifactState.PUBLISHED))
             md.setDraftId(domainRepository.getDraftId(md.getId(), userDetails));
         domain.getMetadata().setTags(tagService.getArtifactTags(domainId, userDetails));
+
+        List<Reference> refsRecommended = referenceService.getAllReferenceBySourceIdAndRefType(domainId,
+                ReferenceType.DOMAIN_TO_RECOMMENDED_ARTIFACT, userDetails);
+        domain.getEntity().setRecommendedArtifacts(
+            refsRecommended.stream().map(r ->
+                new Artifact(r.getEntity().getTargetId(), r.getEntity().getTargetType())).collect(Collectors.toList())
+        );
+
         return domain;
     }
 
@@ -213,6 +247,20 @@ public class DomainService extends WorkflowableService<Domain> {
         return domain;
     }
 
+    public Domain restoreDomainVersionById(String domainId, Integer versionId, UserDetails userDetails)
+            throws LottabyteException {
+        Domain domainVersion = getDomainVersionById(domainId, versionId, userDetails);
+        UpdatableDomainEntity domainVersionEntity = new UpdatableDomainEntity(domainVersion.getEntity());
+
+        Domain domain = updateDomain(domainId, domainVersionEntity, true, userDetails);
+
+        WorkflowableMetadata versionMetadata = (WorkflowableMetadata)domainVersion.getMetadata();
+
+        tagService.mergeTags(versionMetadata.getAncestorDraftId() == null ? domainVersion.getId() : versionMetadata.getAncestorDraftId(), serviceArtifactType, domain.getId(), serviceArtifactType, userDetails);
+
+        return domain;
+    }
+
     public boolean hasAccessToDomain(String domainId, UserDetails userDetails) {
         return domainRepository.hasAccessToDomain(domainId, userDetails);
     }
@@ -234,7 +282,7 @@ public class DomainService extends WorkflowableService<Domain> {
                             userDetails.getLanguage(),
                     domainId);
 
-        Domain current = domainRepository.getById(domainId, userDetails);
+        Domain current = getDomainById(domainId, userDetails);
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
             if (domainRepository.existsSystemsInDomain(domainId, userDetails))
                 throw new LottabyteException(
@@ -297,7 +345,7 @@ public class DomainService extends WorkflowableService<Domain> {
                 stewardService.addStewardToDomain(s, domain.getId(), false, userDetails);
     }
 
-    private void addDomainLinks(String domainId, DomainEntity domain, UserDetails userDetails)
+    private void addDomainLinks(String domainId, DomainEntity domain, String domainPublishedId, UserDetails userDetails)
             throws LottabyteException {
         if (domain.getSystemIds() != null && !domain.getSystemIds().isEmpty()) {
             domain.getSystemIds().stream().forEach(x -> domainRepository.addSystemToDomain(x, domainId, userDetails));
@@ -305,6 +353,38 @@ public class DomainService extends WorkflowableService<Domain> {
         if (domain.getStewards() != null && !domain.getStewards().isEmpty()) {
             for (String s : domain.getStewards())
                 stewardService.addStewardToDomain(s, domainId, false, userDetails);
+        }
+        mergeRecommendedArtifacts(domain, domainId, domainPublishedId, userDetails);
+    }
+
+    private void mergeRecommendedArtifacts(DomainEntity fromDomainEntity, String toDomainId, String publishedDomainId, UserDetails userDetails) throws LottabyteException {
+        Domain toDomain = getDomainById(toDomainId, userDetails);
+        mergeRecommendedArtifacts(fromDomainEntity, toDomain, publishedDomainId, userDetails);
+    }
+
+    private void mergeRecommendedArtifacts(DomainEntity fromDomainEntity, Domain toDomain, String publishedId, UserDetails userDetails) throws LottabyteException {
+        if (fromDomainEntity.getRecommendedArtifacts() != null) {
+            for (Artifact a : fromDomainEntity.getRecommendedArtifacts()) {
+                if (toDomain.getEntity().getRecommendedArtifacts().stream().noneMatch(a2 -> a2.equals(a))) {
+                    UpdatableReferenceEntity re = new UpdatableReferenceEntity();
+                    Integer versionId = publishedId == null ? 0
+                            : referenceService.getLastVersionByPublishedId(publishedId, userDetails);
+                    re.setSourceId(toDomain.getId());
+                    re.setSourceType(ArtifactType.domain);
+                    re.setReferenceType(ReferenceType.DOMAIN_TO_RECOMMENDED_ARTIFACT);
+                    re.setTargetId(a.getId());
+                    re.setTargetType(a.getArtifactType());
+                    re.setPublishedId(publishedId);
+                    re.setVersionId(versionId);
+                    referenceService.createReference(re, userDetails);
+                }
+            }
+
+            for (Artifact a : toDomain.getEntity().getRecommendedArtifacts()) {
+                if (fromDomainEntity.getRecommendedArtifacts().stream().noneMatch(a2 -> a2.equals(a))) {
+                    referenceService.deleteByReferenceSourceIdAndTargetIdAndRefType(toDomain.getId(), a.getId(), ReferenceType.DOMAIN_TO_RECOMMENDED_ARTIFACT, userDetails);
+                }
+            }
         }
     }
 
@@ -334,7 +414,7 @@ public class DomainService extends WorkflowableService<Domain> {
 
         }
         String newDomainId = domainRepository.createDomain(domainEntity, workflowTaskId, userDetails);
-        addDomainLinks(newDomainId, domainEntity, userDetails);
+        addDomainLinks(newDomainId, domainEntity, newDomainId, userDetails);
         Domain domain = domainRepository.getById(newDomainId, userDetails);
 
         return domain;
@@ -358,14 +438,14 @@ public class DomainService extends WorkflowableService<Domain> {
         }
         domainRepository.createDraftFromPublished(publishedId, draftId, workflowTaskId, userDetails);
 
-        addDomainLinks(draftId, current.getEntity(), userDetails);
+        addDomainLinks(draftId, current.getEntity(), publishedId, userDetails);
         tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
 
         return draftId;
     }
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
-    public Domain updateDomain(String domainId, UpdatableDomainEntity domainEntity, UserDetails userDetails)
+    public Domain updateDomain(String domainId, UpdatableDomainEntity domainEntity, boolean updateNulls, UserDetails userDetails)
             throws LottabyteException {
         if (!domainRepository.domainExists(domainId,
                 new ArtifactState[] { ArtifactState.PUBLISHED, ArtifactState.DRAFT }, userDetails))
@@ -378,7 +458,7 @@ public class DomainService extends WorkflowableService<Domain> {
                     Message.LBE00113,
                             userDetails.getLanguage(),
                     domainId);
-        Domain current = domainRepository.getById(domainId, userDetails);
+        Domain current = getDomainById(domainId, userDetails);
         String draftId = null;
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
             draftId = domainRepository.getDraftId(domainId, userDetails);
@@ -390,6 +470,10 @@ public class DomainService extends WorkflowableService<Domain> {
         }
 
         validateSystemIds(domainId, domainEntity, current.getEntity(), userDetails);
+
+        if (updateNulls && domainEntity.getRecommendedArtifacts() == null)
+            domainEntity.setRecommendedArtifacts(new ArrayList<>());
+
         ProcessInstance pi = null;
 
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
@@ -404,16 +488,133 @@ public class DomainService extends WorkflowableService<Domain> {
 
             }
             domainRepository.createDomainDraft(domainId, draftId, workflowTaskId, userDetails);
-            addDomainLinks(draftId, current.getEntity(), userDetails);
+            addDomainLinks(draftId, current.getEntity(), domainId, userDetails);
             tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
 
         } else {
             draftId = domainId;
         }
-        domainRepository.updateDomain(draftId, domainEntity, userDetails);
+        domainRepository.updateDomain(draftId, domainEntity, updateNulls, userDetails);
         if (domainEntity.getSystemIds() != null && !domainEntity.getSystemIds().isEmpty())
             updateDomainSystems(draftId, domainEntity.getSystemIds(), current.getEntity().getSystemIds(), userDetails);
         return domainRepository.getById(draftId, userDetails);
+    }
+
+    public Domain archiveDomainById(String domainId, UserDetails userDetails) throws LottabyteException {
+        if (!domainRepository.domainExists(domainId,
+                new ArtifactState[] { ArtifactState.PUBLISHED, ArtifactState.DRAFT }, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00001,
+                    userDetails.getLanguage(),
+                    domainId);
+        if (userDetails.getStewardId() != null && !domainRepository.hasAccessToDomain(domainId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00113,
+                    userDetails.getLanguage(),
+                    domainId);
+
+        Domain current = domainRepository.getById(domainId, userDetails);
+        if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+            if (domainRepository.existsSystemsInDomain(domainId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00112, userDetails.getLanguage());
+            if (domainRepository.domainHasStewards(domainId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00107,
+                        userDetails.getLanguage(),
+                        domainId);
+            if (dataAssetRepository.existsDataAssetWithDomain(domainId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00111,
+                        userDetails.getLanguage(),
+                        domainId);
+            if (productRepository.existsProductWithDomain(domainId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00120,
+                        userDetails.getLanguage(),
+                        domainId);
+            if (businessEntityRepository.existsBusinessEntityWithDomain(domainId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00121,
+                        userDetails.getLanguage(),
+                        domainId);
+            if (indicatorRepository.existsIndicatorWithDomain(domainId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00122,
+                        userDetails.getLanguage(),
+                        domainId);
+            if (userRepository.existsUserWithDomain(domainId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00123,
+                        userDetails.getLanguage(),
+                        domainId);
+
+            String draftId = domainRepository.getDraftId(domainId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00119,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.ARCHIVE, userDetails);
+            workflowTaskId = pi.getId();
+
+            domainRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            return domainRepository.getById(draftId, userDetails);
+        } else {
+            String draftId = domainRepository.getDraftId(domainId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
+    }
+
+    public Domain restoreDomainById(String domainId, UserDetails userDetails) throws LottabyteException {
+        if (!domainRepository.domainExists(domainId,
+                new ArtifactState[] { ArtifactState.ARCHIVED }, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00001,
+                    userDetails.getLanguage(),
+                    domainId);
+        if (userDetails.getStewardId() != null && !domainRepository.hasAccessToDomain(domainId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00113,
+                    userDetails.getLanguage(),
+                    domainId);
+
+        Domain current = domainRepository.getById(domainId, userDetails);
+        if (ArtifactState.ARCHIVED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+
+            String draftId = domainRepository.getDraftId(domainId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00119,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.RESTORE, userDetails);
+            workflowTaskId = pi.getId();
+
+            domainRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            return domainRepository.getById(draftId, userDetails);
+        } else {
+            String draftId = domainRepository.getDraftId(domainId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
     }
 
     private String createDraftDomain(Domain current, WorkflowState workflowState, UserDetails userDetails)
@@ -427,7 +628,7 @@ public class DomainService extends WorkflowableService<Domain> {
         workflowTaskId = pi.getId();
 
         draftId = domainRepository.createDomainDraft(current.getId(), draftId, workflowTaskId, userDetails);
-        addDomainLinks(draftId, current.getEntity(), userDetails);
+        addDomainLinks(draftId, current.getEntity(), current.getId(), userDetails);
         tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
 
         return draftId;
@@ -531,7 +732,16 @@ public class DomainService extends WorkflowableService<Domain> {
         PaginatedArtifactList<Domain> domainPaginatedArtifactList = domainRepository.getAllPaginated(offset, limit,
                 "/v1/domains/", ArtifactState.valueOf(artifactState), userDetails);
         domainPaginatedArtifactList.getResources().forEach(
-                domain -> domain.getMetadata().setTags(tagService.getArtifactTags(domain.getId(), userDetails)));
+                domain -> {
+                    domain.getMetadata().setTags(tagService.getArtifactTags(domain.getId(), userDetails));
+                    List<Reference> refsRecommended = referenceService.getAllReferenceBySourceIdAndRefType(domain.getId(),
+                            ReferenceType.DOMAIN_TO_RECOMMENDED_ARTIFACT, userDetails);
+                    domain.getEntity().setRecommendedArtifacts(
+                            refsRecommended.stream().map(r ->
+                                    new Artifact(r.getEntity().getTargetId(), r.getEntity().getTargetType())).collect(Collectors.toList())
+                    );
+                }
+        );
         return domainPaginatedArtifactList;
     }
 
@@ -565,6 +775,12 @@ public class DomainService extends WorkflowableService<Domain> {
         if (md.getAncestorDraftId() != null) {
             d.getMetadata().setTags(tagService.getArtifactTags(md.getAncestorDraftId(), userDetails));
             d.getEntity().setSystemIds(domainRepository.getSystemIdsByDomainId(md.getAncestorDraftId(), userDetails));
+            List<Reference> refsRecommended = referenceService.getAllReferenceBySourceIdAndRefType(md.getAncestorDraftId(),
+                    ReferenceType.DOMAIN_TO_RECOMMENDED_ARTIFACT, userDetails);
+            d.getEntity().setRecommendedArtifacts(
+                refsRecommended.stream().map(r -> new Artifact(r.getEntity().getTargetId(), r.getEntity().getTargetType()))
+                        .collect(Collectors.toList())
+            );
         }
     }
 
@@ -591,6 +807,7 @@ public class DomainService extends WorkflowableService<Domain> {
                                 .url("/v1/stewards/" + x.getId())
                                 .build())
                         .collect(Collectors.toList())));
+        res.getItems().forEach(d -> d.setIsInFav(userFavService.isInFav(d.getId(), userDetails)));
         return res;
     }
 
@@ -604,9 +821,11 @@ public class DomainService extends WorkflowableService<Domain> {
         .versionId(d.getMetadata().getVersionId())
         .name(d.getMetadata().getName())
         .description(d.getEntity().getDescription())
+        .shortDescription(d.getEntity().getShortDescription())
         .modifiedBy(d.getMetadata().getModifiedBy())
         .modifiedAt(d.getMetadata().getModifiedAt())
         .artifactType(d.getMetadata().getArtifactType())
+        .artifactState(((WorkflowableMetadata)d.getMetadata()).getState().name())
         .effectiveStartDate(d.getMetadata().getEffectiveStartDate())
         .effectiveEndDate(d.getMetadata().getEffectiveEndDate())
         .tags(Helper.getEmptyListIfNull(d.getMetadata().getTags()).stream()
@@ -617,4 +836,9 @@ public class DomainService extends WorkflowableService<Domain> {
 
         return sa;
     }
+
+    public List<UserDetails> getResponsibles(String domainId, UserDetails userDetails) {
+        return domainRepository.getResponsibles(domainId, userDetails);
+    }
+
 }

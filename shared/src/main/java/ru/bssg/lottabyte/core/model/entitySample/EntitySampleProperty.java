@@ -19,7 +19,7 @@ public class EntitySampleProperty extends ModeledObject<EntitySamplePropertyEnti
         super(entity);
     }
 
-    public EntitySampleProperty(EntitySamplePropertyEntity entity, Metadata md) throws LottabyteException {
+    public EntitySampleProperty(EntitySamplePropertyEntity entity, Metadata md) {
         super(entity, md, ArtifactType.entity_sample_property);
     }
 

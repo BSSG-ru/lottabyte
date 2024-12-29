@@ -31,6 +31,9 @@ public class RecentViewService {
     public RecentView changeRecentView(String artifactId, String artifactType, UserDetails userDetails) throws LottabyteException {
         if (!EnumUtils.isValidEnum(ArtifactType.class, artifactType))
             throw new LottabyteException(Message.LBE00044, userDetails.getLanguage(), artifactType);
+
+        recentViewRepository.recordArtifactView(artifactId, artifactType, userDetails);
+
         if (!recentViewRepository.existsObjectByIdAndArtifactType(artifactId, artifactType, userDetails)) {
             throw new LottabyteException(Message.LBE01704, userDetails.getLanguage(), artifactId, artifactType);
         }

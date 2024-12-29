@@ -24,8 +24,10 @@ import ru.bssg.lottabyte.core.model.qualityTask.QualityTaskEntity;
 import ru.bssg.lottabyte.core.model.qualityTask.QualityTaskRun;
 import ru.bssg.lottabyte.core.model.qualityTask.QualityTaskRunEntity;
 import ru.bssg.lottabyte.core.ui.model.*;
+import ru.bssg.lottabyte.core.usermanagement.model.Language;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.util.ServiceUtils;
+import ru.bssg.lottabyte.coreapi.util.Helper;
 import ru.bssg.lottabyte.coreapi.util.QueryHelper;
 
 import java.sql.ResultSet;
@@ -37,6 +39,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getJoinQuery;
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
 
 @Repository
 @Slf4j
@@ -194,6 +199,7 @@ public class QualityTaskRepository extends GenericArtifactRepository<QualityTask
             task.setEntitySampleId(rs.getString("entity_sample_id"));
             task.setEntitySampleName(rs.getString("entity_sample_name"));
             task.setIsCrontab(rs.getString("is_crontab"));
+            task.setIsCrontabText(rs.getString("is_crontab_text"));
             task.setStatus(rs.getString("status"));
             task.setRuleTypeId(rs.getString("rule_type_id"));
             task.setRuleTypeName(rs.getString("rule_type_name"));
@@ -382,7 +388,13 @@ public class QualityTaskRepository extends GenericArtifactRepository<QualityTask
         String subQuery = "SELECT openlinage_log_monitor_draft.*, true as has_access from da_" + ud.getTenant()
                 + ".openlinage_log_monitor_draft ";
         if (ud.getStewardId() != null) {
-            String hasAccessJoinQuery = QueryHelper.getWhereIdInQuery(ArtifactType.task, ud);
+            String hasAccessJoinQuery = ""; //QueryHelper.getWhereIdInQuery(ArtifactType.ru, ud);
+            StringBuilder sb = new StringBuilder("where ");
+            sb.append("(openlinage_log_monitor_draft.input_asset_domain_id in (");
+            sb.append("select domain.id from da_" + ud.getTenant() + ".domain ");
+            sb.append(getJoinQuery(ArtifactType.domain, ud));
+            sb.append(" WHERE domain.state='PUBLISHED')) ");
+            hasAccessJoinQuery = sb.toString();
             subQuery = "SELECT openlinage_log_monitor_draft.*, case when acc.id is null then false else true end as has_access FROM da_"
                     + ud.getTenant() + ".openlinage_log_monitor_draft "
                     + " left join (select openlinage_log_monitor_draft.id from da_" + ud.getTenant()
@@ -479,12 +491,17 @@ public class QualityTaskRepository extends GenericArtifactRepository<QualityTask
         if (orderby.equals("name"))
             orderby = "rule_name";
 
-        String subQuery = "SELECT dq_rule_tasks.*, true as has_access from da_" + ud.getTenant()
+        String subQuery = "SELECT dq_rule_tasks.*, true as has_access, "
+                + "(CASE WHEN dq_rule_tasks.is_crontab = 1 THEN '" + (Helper.getBoolText(1, ud.getLanguage())) +"' ELSE '" + Helper.getBoolText(0, ud.getLanguage()) + "' END) AS is_crontab_text"
+                + " from da_" + ud.getTenant()
                 + ".dq_rule_tasks ";
         if (ud.getStewardId() != null) {
-            String hasAccessJoinQuery = QueryHelper.getWhereIdInQuery(ArtifactType.task, ud);
+            String hasAccessJoinQuery = QueryHelper.getWhereIdInQuery(ArtifactType.dq_rule_task, ud);
             subQuery = "SELECT dq_rule_tasks.*, case when acc.id is null then false else true end as has_access FROM da_"
-                    + ud.getTenant() + ".dq_rule_tasks ";
+                    + ud.getTenant() + ".dq_rule_tasks "
+                    + " left join (select dq_rule_tasks.id from da_" + ud.getTenant() + ".dq_rule_tasks "
+                    + hasAccessJoinQuery + ") acc on dq_rule_tasks.id = acc.id ";
+            ;
             if (searchRequest.getLimitSteward() != null && searchRequest.getLimitSteward())
                 subQuery = "SELECT dq_rule_tasks.*, true as has_access FROM da_" + ud.getTenant()
                         + ".dq_rule_tasks "
@@ -497,6 +514,9 @@ public class QualityTaskRepository extends GenericArtifactRepository<QualityTask
                 + searchRequest.getLimit();
 
         List<FlatQualityRuleTask> items = jdbcTemplate.query(queryForItems, new FlatQualityRuleTaskRowMapper(), whereValues.toArray());
+
+
+
 
         String queryForTotal = "SELECT COUNT(tbl1.id) FROM (" + subQuery + ") tbl1 " + join + where;
         Integer total = jdbcTemplate.queryForObject(queryForTotal, Integer.class, whereValues.toArray());

@@ -23,11 +23,8 @@ public class Entity {
     protected String id;
     protected String name;
     protected String description;
+    protected String shortDescription;
     protected ArtifactType artifactType;
-
-    public String generateGuid() throws LottabyteException {
-        return UUID.randomUUID().toString();
-    }
 
     public Entity(ArtifactType artifactType) {
         this.artifactType = artifactType;

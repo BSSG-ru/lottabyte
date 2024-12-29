@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import ru.bssg.lottabyte.core.model.FlatModeledObject;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -15,6 +16,7 @@ import java.util.List;
 public class FlatExternalGroup extends FlatModeledObject {
     private List<String> permissions;
     private List<String> userRoles;
+    private String userRoleNames;
     private String attributes;
     private String tenant;
 
@@ -24,5 +26,6 @@ public class FlatExternalGroup extends FlatModeledObject {
         this.userRoles = s.getEntity().getUserRoles();
         this.attributes = s.getEntity().getAttributes();
         this.tenant = s.getEntity().getTenant();
+        this.userRoleNames = s.getEntity().getUserRoleNames();
     }
 }

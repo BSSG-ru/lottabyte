@@ -30,9 +30,9 @@ public class UserRepository {
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
 
-    class UserDetailsRowMapper implements RowMapper<UserDetails> {
-        @Override
-        public UserDetails mapRow(ResultSet rs, int rowNum) throws SQLException {
+    public static class SimpleUserDetailsRowMapper implements RowMapper<UserDetails> {
+
+        public static UserDetails readRow(ResultSet rs) throws SQLException {
             UserDetails userDetails = new UserDetails();
             userDetails.setUid(rs.getString("uid"));
             userDetails.setUsername(rs.getString("username"));
@@ -45,6 +45,21 @@ public class UserRepository {
             userDetails.setInternalUser(rs.getString("password_hash") != null);
             userDetails.setPassword(rs.getString("password_hash"));
             userDetails.setTenant(rs.getString("tenant"));
+
+            return userDetails;
+        }
+
+        @Override
+        public UserDetails mapRow(ResultSet rs, int rowNum) throws SQLException {
+            return readRow(rs);
+        }
+    }
+
+    class UserDetailsRowMapper implements RowMapper<UserDetails> {
+        @Override
+        public UserDetails mapRow(ResultSet rs, int rowNum) throws SQLException {
+            UserDetails userDetails = SimpleUserDetailsRowMapper.readRow(rs);
+
             Set<String> permissions = new HashSet<>();
             if (rs.getArray("permissions") != null) {
                 String[] array = (String[])rs.getArray("permissions").getArray();
@@ -127,16 +142,20 @@ public class UserRepository {
     public UserDetails getPlatformUserById(String userId, String tenant) {
         return jdbcTemplate.query("SELECT uid, username, display_name, description, email, salt, password_hash, apikey_hash, apikey_salt, " +
                         "approval_status, permissions, user_roles, current_account_status, internal_user, deletable, authenticator, created, modified, tenant " +
-                        ", array(SELECT domain_id FROM da_" + tenant + ".user_to_domain WHERE user_id=?) AS user_domains " +
+                        ", array(SELECT domain_id FROM da_" + tenant + ".user_to_domain JOIN da_" + tenant + ".domain d ON domain_id=d.id AND d.state='PUBLISHED' WHERE user_id=?) AS user_domains, " +
+                        " array(SELECT domain_id FROM da_" + tenant + ".steward_to_domain s2d JOIN da_" + tenant +
+                        ".steward s ON s2d.steward_id=s.id AND s.user_id=? JOIN da_" + tenant + ".domain d ON d.id=s2d.domain_id AND d.state='PUBLISHED') AS steward_domains " +
                         "FROM usermgmt.platform_users " +
                         "WHERE uid = ? AND tenant = ?",
-                new UserDetailsRowMapper(), Long.parseLong(userId), Long.parseLong(userId), tenant).stream().findFirst().orElse(null);
+                new UserDetailsRowMapper(), Long.parseLong(userId), Long.parseLong(userId), Long.parseLong(userId), tenant).stream().findFirst().orElse(null);
     }
     public List<UserDetails> getPlatformUserByTenantId(String tenantId) {
         return jdbcTemplate.query("SELECT uid, username, display_name, description, email, salt, password_hash, apikey_hash, apikey_salt, " +
                         "approval_status, permissions, user_roles, current_account_status, internal_user, deletable, authenticator, created, modified, tenant " +
-                        ", array(SELECT domain_id FROM da_" + tenantId + ".user_to_domain WHERE user_id=?) AS user_domains " +
-                        "FROM usermgmt.platform_users " +
+                        ", array(SELECT domain_id FROM da_" + tenantId + ".user_to_domain JOIN da_" + tenantId + ".domain d ON d.id=domain_id AND d.state='PUBLISHED' WHERE user_id=pu.uid) AS user_domains, " +
+                        " array(SELECT domain_id FROM da_" + tenantId + ".steward_to_domain s2d JOIN da_" + tenantId +
+                        ".steward s ON s2d.steward_id=s.id AND s.user_id==pu.uid JOIN da_" + tenantId + ".domain d ON d.id=s2d.domain_id AND d.state='PUBLISHED') AS steward_domains " +
+                        "FROM usermgmt.platform_users pu " +
                         "WHERE tenant = ?",
                 new UserDetailsRowMapper(), tenantId);
     }
@@ -144,9 +163,11 @@ public class UserRepository {
     public List<UserDetails> getUsersByRoleName(String roleName, String tenant) {
         return jdbcTemplate.query("SELECT uid, username, display_name, description, email, salt, password_hash, apikey_hash, apikey_salt, " +
                 "approval_status, permissions, user_roles, current_account_status, internal_user, deletable, authenticator, created, modified, tenant " +
-                ", array(SELECT domain_id FROM da_" + tenant + ".user_to_domain WHERE user_id=uid) AS user_domains " +
-                "FROM usermgmt.platform_users WHERE tenant = ? AND CAST((SELECT id FROM usermgmt.user_roles WHERE name=?) AS TEXT)=ANY(user_roles)",
-                new UserDetailsRowMapper(), tenant, roleName);
+                ", array(SELECT domain_id FROM da_" + tenant + ".user_to_domain JOIN da_" + tenant + ".domain d ON d.id=domain_id AND d.state='PUBLISHED' WHERE user_id=uid) AS user_domains, " +
+                " array(SELECT domain_id FROM da_" + tenant + ".steward_to_domain s2d JOIN da_" + tenant +
+                ".steward s ON s2d.steward_id=s.id AND s.user_id=uid JOIN da_" + tenant + ".domain d ON d.id=s2d.domain_id AND d.state='PUBLISHED') AS steward_domains " +
+                "FROM usermgmt.platform_users WHERE tenant = ? AND CAST((SELECT id FROM usermgmt.user_roles WHERE name=? AND tenant=?) AS TEXT)=ANY(user_roles)",
+                new UserDetailsRowMapper(), tenant, roleName, tenant);
     }
 
     public List<UserRole> getUserRolesByTenantId(String tenantId) {
@@ -227,8 +248,9 @@ public class UserRepository {
     }
 
     public boolean existsUserWithDomain(String domainId, UserDetails userDetails) {
-        return jdbcTemplate.queryForObject("SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".user_to_domain " +
-                        "WHERE domain_id is not null and domain_id = ?) AS EXISTS",
+        return jdbcTemplate.queryForObject("SELECT EXISTS(SELECT u2d.ID FROM da_" + userDetails.getTenant() + ".user_to_domain u2d " +
+                        "JOIN usermgmt.platform_users pu ON u2d.user_id=pu.uid " +
+                        "WHERE u2d.domain_id is not null and u2d.domain_id = ?) AS EXISTS",
                 Boolean.class, UUID.fromString(domainId));
     }
 

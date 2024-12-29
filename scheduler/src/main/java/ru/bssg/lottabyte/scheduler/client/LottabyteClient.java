@@ -30,7 +30,7 @@ import java.util.Map;
 @Service
 public class LottabyteClient {
     private static final String PREAUTH = "/v1/preauth/validateAuth";
-    private static final String TASKRUN = "/v1/tasks/run/";
+    private static final String TASKRUN = "/v1/tasks/schedules/run/";
     private String bearerToken = null;
     private String baseURL = null;
     private RestTemplate restTemplate;
@@ -54,8 +54,9 @@ public class LottabyteClient {
         this.mapper = new ObjectMapper();
     }
 
-    public JsonNode postRunTask(String taskId) {
-        String url = baseURL + TASKRUN + taskId;
+    public JsonNode postRunTask(String taskScheduleId) {
+        log.info("postRunTask " + baseURL + TASKRUN + taskScheduleId);
+        String url = baseURL + TASKRUN + taskScheduleId;
         return _makeRequest( url, HttpMethod.POST, (JsonNode)null);
     }
 
@@ -93,6 +94,7 @@ public class LottabyteClient {
         if (payload != null) {
             toSend = new HttpEntity(payload.toString(), this.getHttpHeaders(headerOpts));
         }
+        log.info("exchange " + endpoint + " " + method);
         ResponseEntity<String> response = this.restTemplate.exchange(endpoint, method, toSend, String.class, new Object[0]);
         JsonNode jsonNode = null;
         if (response.hasBody()) {
@@ -103,6 +105,7 @@ public class LottabyteClient {
                 log.error(ExceptionUtils.getStackTrace(e));
             }
         }
+        log.info("req result: " + jsonNode.asText());
         return jsonNode;
     }
 

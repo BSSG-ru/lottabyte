@@ -34,11 +34,13 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class ProductRepository extends WorkflowableRepository<Product> {
     private final JdbcTemplate jdbcTemplate;
-    private static String[] extFields = { "domain_id", "problem", "consumer", "value", "finance_source", "link",
+    private static String[] extFields = { "domain_id","entity_query_id", "problem", "consumer", "value", "finance_source", "link",
     "limits", "limits_internal", "roles" };
 
     public ProductRepository(JdbcTemplate jdbcTemplate) {
@@ -47,7 +49,7 @@ public class ProductRepository extends WorkflowableRepository<Product> {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    private static class FlatProductRowMapper implements RowMapper<FlatProduct> {
+    public static class FlatProductRowMapper implements RowMapper<FlatProduct> {
         @Override
         public FlatProduct mapRow(ResultSet rs, int rowNum) throws SQLException {
             FlatProduct flatProduct = new FlatProduct();
@@ -56,10 +58,13 @@ public class ProductRepository extends WorkflowableRepository<Product> {
                 productEntity.setName(rs.getString("name"));
                 productEntity.setDescription(rs.getString("description"));
                 productEntity.setDomainId(rs.getString("domain_id"));
+                productEntity.setEntityQueryId(rs.getString("entity_query_id"));
                 productEntity.setProblem(rs.getString("problem"));
                 productEntity.setConsumer(rs.getString("consumer"));
                 productEntity.setValue(rs.getString("value"));
                 productEntity.setFinanceSource(rs.getString("finance_source"));
+                if (rs.getObject("short_description") != null)
+                    productEntity.setShortDescription(rs.getString("short_description"));
 
                 flatProduct = new FlatProduct(
                         new Product(productEntity, new WorkflowableMetadata(rs, productEntity.getArtifactType())));
@@ -118,6 +123,7 @@ public class ProductRepository extends WorkflowableRepository<Product> {
             productEntity.setDescription(rs.getString("description"));
             productEntity.setVersionId(rs.getInt("version_id"));
             productEntity.setDomainId(rs.getString("domain_id"));
+            productEntity.setEntityQueryId(rs.getString("entity_query_id"));
             productEntity.setProblem(rs.getString("problem"));
             productEntity.setConsumer(rs.getString("consumer"));
             productEntity.setValue(rs.getString("value"));
@@ -126,6 +132,8 @@ public class ProductRepository extends WorkflowableRepository<Product> {
             productEntity.setLimits(rs.getString("limits"));
             productEntity.setLimits_internal(rs.getString("limits_internal"));
             productEntity.setRoles(rs.getString("roles"));
+            if (rs.getObject("short_description") != null)
+                productEntity.setShortDescription(rs.getString("short_description"));
 
             return new Product(productEntity, new WorkflowableMetadata(rs, productEntity.getArtifactType()));
         }
@@ -173,67 +181,77 @@ public class ProductRepository extends WorkflowableRepository<Product> {
         Timestamp ts = new Timestamp(new Date().getTime());
 
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                + ".product (id, \"name\", description, history_start, history_end, version_id, created, creator, modified, modifier, state, workflow_task_id, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles) "
+                + ".product (id, \"name\", description, short_description, history_start, history_end, version_id, created, creator, modified, modifier, state, workflow_task_id, domain_id, problem, consumer, value, finance_source, link, limits,   limits_internal, roles,entity_query_id) "
                 +
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                newId, product.getName(), product.getDescription(),
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                newId, product.getName(), product.getDescription(), product.getShortDescription(),
                 ts, ts, 0, ts, userDetails.getUid(), ts, userDetails.getUid(), ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
                 product.getDomainId() == null ? null : UUID.fromString(product.getDomainId()),
                 product.getProblem(), product.getConsumer(), product.getValue(), product.getFinanceSource(),
-                product.getLink(), product.getLimits(), product.getLimits_internal(), product.getRoles());
+                product.getLink(), product.getLimits(), product.getLimits_internal(), product.getRoles(),product.getEntityQueryId());
 
         return newId.toString();
     }
 
-    public void updateProduct(String productId, UpdatableProductEntity productEntity, UserDetails userDetails) {
+    public void updateProduct(String productId, UpdatableProductEntity productEntity, boolean updateNulls, UserDetails userDetails) {
         List<String> sets = new ArrayList<>();
         List<Object> params = new ArrayList<>();
 
         String query = "UPDATE da_" + userDetails.getTenant() + ".product SET modifier = ?, modified = ?";
         params.add(userDetails.getUid());
         params.add(new Timestamp(new java.util.Date().getTime()));
-        if (productEntity.getName() != null) {
+        if (updateNulls || productEntity.getName() != null) {
             sets.add("\"name\" = ?");
             params.add(productEntity.getName());
         }
-        if (productEntity.getDescription() != null) {
+        if (updateNulls || productEntity.getDescription() != null) {
             sets.add("description = ?");
             params.add(productEntity.getDescription());
         }
-        if (productEntity.getDomainId() != null) {
-            sets.add("domain_id = ?");
-            params.add(productEntity.getDomainId().isEmpty() ? null : UUID.fromString(productEntity.getDomainId()));
+        if (updateNulls || productEntity.getShortDescription() != null) {
+            sets.add("short_description = ?");
+            params.add(productEntity.getShortDescription());
         }
-        if (productEntity.getProblem() != null) {
+        if (updateNulls || productEntity.getDomainId() != null) {
+            sets.add("domain_id = ?");
+            params.add((productEntity.getDomainId() == null || productEntity.getDomainId().isEmpty()) ?
+                    null : UUID.fromString(productEntity.getDomainId()));
+        }
+        if (updateNulls || productEntity.getEntityQueryId() != null) {
+            sets.add("entity_query_id = ?");
+            params.add((productEntity.getEntityQueryId() == null || productEntity.getEntityQueryId().isEmpty()) ?
+                    null : UUID.fromString(productEntity.getEntityQueryId()));
+        }
+        if (updateNulls || productEntity.getProblem() != null) {
             sets.add("problem = ?");
             params.add(productEntity.getProblem());
         }
-        if (productEntity.getConsumer() != null) {
+        if (updateNulls || productEntity.getConsumer() != null) {
             sets.add("consumer = ?");
             params.add(productEntity.getConsumer());
         }
-        if (productEntity.getValue() != null) {
+        if (updateNulls || productEntity.getValue() != null) {
             sets.add("value = ?");
             params.add(productEntity.getValue());
         }
-        if (productEntity.getFinanceSource() != null) {
+        if (updateNulls || productEntity.getFinanceSource() != null) {
             sets.add("finance_source = ?");
             params.add(productEntity.getFinanceSource());
         }
-        if (productEntity.getLink() != null) {
+        if (updateNulls || productEntity.getLink() != null) {
             sets.add("link = ?");
             params.add(productEntity.getLink());
         }
-        if (productEntity.getLimits() != null) {
+        if (updateNulls || productEntity.getLimits() != null) {
             sets.add("limits = ?");
             params.add(productEntity.getLimits());
         }
-        if (productEntity.getLimits_internal() != null) {
+        if (updateNulls || productEntity.getLimits_internal() != null) {
             sets.add("limits_internal = ?");
             params.add(productEntity.getLimits_internal());
         }
-        if (productEntity.getRoles() != null) {
+        if (updateNulls || productEntity.getRoles() != null) {
             sets.add("roles = ?");
             params.add(productEntity.getRoles());
         }
@@ -249,19 +267,19 @@ public class ProductRepository extends WorkflowableRepository<Product> {
         String res = null;
         if (publishedProductId != null) {
             jdbcTemplate.update("UPDATE da_" + userDetails.getTenant()
-                    + ".product e SET name = draft.name, description = draft.description, domain_id = draft.domain_id, problem = draft.problem, consumer = draft.consumer,"
+                    + ".product e SET name = draft.name, description = draft.description, short_description = draft.short_description, entity_query_id = draft.entity_query_id, domain_id = draft.domain_id, problem = draft.problem, consumer = draft.consumer,"
                     + " value = draft.value, finance_source = draft.finance_source, link = draft.link, limits = draft.limits, limits_internal = draft.limits_internal, roles = draft.roles,"
                     + " ancestor_draft_id = draft.id, modified = draft.modified, modifier = draft.modifier "
-                    + " from (select id, name, description, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles FROM da_"
+                    + " from (select id, name, description, short_description, modified, modifier, domain_id, entity_query_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles FROM da_"
                     + userDetails.getTenant() + ".product) as draft where e.id = ? and draft.id = ?",
                     UUID.fromString(publishedProductId), UUID.fromString(draftProductId));
             res = publishedProductId;
         } else {
             UUID newId = UUID.randomUUID();
             jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                    + ".product (id, name, description, state, workflow_task_id, "
-                    + "published_id, published_version_id, ancestor_draft_id, created, creator, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles) "
-                    + "SELECT ?, name, description, ?, ?, ?, ?, ?, created, creator, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles "
+                    + ".product (id, name, description, short_description, state, workflow_task_id, "
+                    + "published_id, published_version_id, ancestor_draft_id, created, creator, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles,entity_query_id) "
+                    + "SELECT ?, name, description, short_description, ?, ?, ?, ?, ?, created, creator, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles ,entity_query_id "
                     + "FROM da_" + userDetails.getTenant() + ".product where id = ?",
                     newId, ArtifactState.PUBLISHED.toString(), null, null, null,
                     UUID.fromString(draftProductId), UUID.fromString(draftProductId));
@@ -276,9 +294,9 @@ public class ProductRepository extends WorkflowableRepository<Product> {
             UserDetails userDetails) {
         UUID newId = draftId != null ? UUID.fromString(draftId) : UUID.randomUUID();
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                + ".product (id, name, description, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles) "
+                + ".product (id, name, description, short_description, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles,entity_query_id) "
                 +
-                "SELECT ?, name, description, ?, ?, id, version_id, created, creator, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles FROM da_"
+                "SELECT ?, name, description, short_description, ?, ?, id, version_id, created, creator, modified, modifier, domain_id, problem, consumer, value, finance_source, link, limits, limits_internal, roles, entity_query_id FROM da_"
                 + userDetails.getTenant() + ".product where id = ?",
                 newId, ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
@@ -416,6 +434,12 @@ public class ProductRepository extends WorkflowableRepository<Product> {
                 + " where r.source_id = ?", new IndicatorRepository.IndicatorRowMapper(), UUID.fromString(productId));
     }
 
+    public List<Product> getProductsByProductId(String productId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT i.* FROM da_" + userDetails.getTenant() + ".product i "
+                + " join da_" + userDetails.getTenant() + ".reference r on r.target_id = i.id "
+                + " where r.source_id = ?", new ProductRepository.ProductRowMapper(), UUID.fromString(productId));
+    }
+
     public List<ProductType> getProductTypesByProductId(String productId, UserDetails userDetails) {
         return jdbcTemplate.query("SELECT pt.* FROM da_" + userDetails.getTenant() + ".product_type pt "
                 + " join da_" + userDetails.getTenant() + ".reference r on r.target_id = pt.id "
@@ -479,6 +503,12 @@ public class ProductRepository extends WorkflowableRepository<Product> {
         return jdbcTemplate.queryForObject("SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".product " +
                 "WHERE domain_id is not null and domain_id = ? and state = ?) AS EXISTS",
                 Boolean.class, UUID.fromString(domainId), ArtifactState.PUBLISHED.toString());
+    }
+
+    public boolean existsProductWithQuery(String queryId, UserDetails userDetails) {
+        return jdbcTemplate.queryForObject("SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".product " +
+                        "WHERE entity_query_id is not null and entity_query_id = ? and state = ?) AS EXISTS",
+                Boolean.class, UUID.fromString(queryId), ArtifactState.PUBLISHED.toString());
     }
 
     public List<BusinessEntity> getTermLinksById(String productId, UserDetails userDetails) {

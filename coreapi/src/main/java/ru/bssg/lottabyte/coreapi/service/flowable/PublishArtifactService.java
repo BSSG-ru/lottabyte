@@ -20,6 +20,7 @@ import ru.bssg.lottabyte.core.model.entityQuery.EntityQuery;
 import ru.bssg.lottabyte.core.model.indicator.Indicator;
 import ru.bssg.lottabyte.core.model.product.Product;
 import ru.bssg.lottabyte.core.model.system.System;
+import ru.bssg.lottabyte.core.usermanagement.model.Language;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.coreapi.service.*;
 
@@ -59,6 +60,8 @@ public class PublishArtifactService implements JavaDelegate {
             ud.setUid((String) execution.getVariable("ud_uid"));
             ud.setTenant((String) execution.getVariable("ud_tenant"));
             ud.setStewardId((String) execution.getVariable("ud_stewardid"));
+            log.info("execution.getVariable(ud_language) " + execution.getVariable("ud_language"));
+            ud.setLanguage( (Language)execution.getVariable("ud_language"));
             try {
                 switch (artifactType) {
                     case domain:

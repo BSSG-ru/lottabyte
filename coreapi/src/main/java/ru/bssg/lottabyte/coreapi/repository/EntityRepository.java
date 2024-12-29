@@ -17,12 +17,16 @@ import ru.bssg.lottabyte.core.model.*;
 import java.time.LocalDateTime;
 
 import ru.bssg.lottabyte.core.model.reference.ReferenceType;
+import ru.bssg.lottabyte.core.model.relation.Relation;
+import ru.bssg.lottabyte.core.model.tag.Tag;
+import ru.bssg.lottabyte.core.model.tag.TagEntity;
 import ru.bssg.lottabyte.core.ui.model.*;
 import ru.bssg.lottabyte.core.ui.model.gojs.*;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.model.dataentity.*;
 import ru.bssg.lottabyte.core.model.relation.ParentRelation;
 import ru.bssg.lottabyte.core.util.ServiceUtils;
+import ru.bssg.lottabyte.coreapi.service.TagService;
 import ru.bssg.lottabyte.coreapi.util.Constants;
 import ru.bssg.lottabyte.coreapi.util.QueryHelper;
 
@@ -30,19 +34,25 @@ import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class EntityRepository extends WorkflowableRepository<DataEntity> {
     private final JdbcTemplate jdbcTemplate;
-    private static String[] extFields = { "entity_folder_id" };
+    private final TagService tagService;
+    private final TagRepository tagRepository;
+    private static String[] extFields = { "entity_folder_id", "tech_name" };
 
-    public EntityRepository(JdbcTemplate jdbcTemplate) {
+    public EntityRepository(JdbcTemplate jdbcTemplate, TagService tagService, TagRepository tagRepository) {
         super(jdbcTemplate, ArtifactType.entity.name(), extFields);
+        this.tagService = tagService;
+        this.tagRepository = tagRepository;
         super.setMapper(new EntityRepository.DataEntityRowMapper());
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    private static class FlatDataEntityRowMapper extends FlatItemRowMapper<FlatDataEntity> {
+    public static class FlatDataEntityRowMapper extends FlatItemRowMapper<FlatDataEntity> {
 
         public FlatDataEntityRowMapper() {
             super(FlatDataEntity::new);
@@ -106,6 +116,13 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             dataEntityAttributeEntity.setAttributeId(rs.getString("attribute_id"));
             dataEntityAttributeEntity.setId(rs.getString("id"));
             dataEntityAttributeEntity.setIsPk(rs.getBoolean("is_pk"));
+            dataEntityAttributeEntity.setAttributeTypeName(rs.getString("attribute_type_name"));
+            dataEntityAttributeEntity.setCreated(rs.getTimestamp("created").toLocalDateTime());
+            try {
+                dataEntityAttributeEntity.setMetaColumnId(rs.getString("meta_column_id"));
+                dataEntityAttributeEntity.setMetaColumnName(rs.getString("meta_column_name"));
+                dataEntityAttributeEntity.setMetaDatabaseId(rs.getString("meta_database_id"));
+            } catch (Exception e) {}
 
             return dataEntityAttributeEntity;
         }
@@ -137,7 +154,9 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             DataEntityEntity dataEntityEntity = new DataEntityEntity();
             dataEntityEntity.setEntityFolderId(rs.getString("entity_folder_id"));
             dataEntityEntity.setName(rs.getString("name"));
+            dataEntityEntity.setTechName(rs.getString("tech_name"));
             dataEntityEntity.setDescription(rs.getString("description"));
+            dataEntityEntity.setShortDescription(rs.getString("short_description"));
             dataEntityEntity.setRoles(rs.getString("roles"));
 
             return new DataEntity(dataEntityEntity, new WorkflowableMetadata(rs, dataEntityEntity.getArtifactType()));
@@ -405,8 +424,8 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
         Timestamp ts = new Timestamp(new java.util.Date().getTime());
 
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                + ".entity (id, name, description, entity_folder_id, state, workflow_task_id, created, creator, modified, modifier, roles) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                newId, dataEntity.getName(), dataEntity.getDescription(),
+                + ".entity (id, name, description, short_description, entity_folder_id, state, workflow_task_id, created, creator, modified, modifier, roles) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                newId, dataEntity.getName(), dataEntity.getDescription(), dataEntity.getShortDescription(),
                 dataEntity.getEntityFolderId() != null ? UUID.fromString(dataEntity.getEntityFolderId()) : null,
                 ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
@@ -438,7 +457,7 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public DataEntity updateDataEntity(String dataEntityId, UpdatableDataEntityEntity dataEntityEntity,
-            UserDetails userDetails) {
+            boolean updateNulls, UserDetails userDetails) {
         DataEntity de = new DataEntity(dataEntityEntity);
         de.setId(dataEntityId);
 
@@ -449,19 +468,27 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
         List<String> sets = new ArrayList<>();
         List<Object> args = new ArrayList<>();
 
-        if (dataEntityEntity.getName() != null) {
+        if (updateNulls || dataEntityEntity.getName() != null) {
             sets.add("name=?");
             args.add(dataEntityEntity.getName());
         }
-        if (dataEntityEntity.getDescription() != null) {
+        if (updateNulls || dataEntityEntity.getTechName() != null) {
+            sets.add("tech_name=?");
+            args.add(dataEntityEntity.getTechName());
+        }
+        if (updateNulls || dataEntityEntity.getDescription() != null) {
             sets.add("description=?");
             args.add(dataEntityEntity.getDescription());
         }
-        if (dataEntityEntity.getEntityFolderId() != null) {
-            sets.add("entity_folder_id=?");
-            args.add(UUID.fromString(dataEntityEntity.getEntityFolderId()));
+        if (updateNulls || dataEntityEntity.getShortDescription() != null) {
+            sets.add("short_description=?");
+            args.add(dataEntityEntity.getShortDescription());
         }
-        if (dataEntityEntity.getRoles() != null) {
+        if (updateNulls || dataEntityEntity.getEntityFolderId() != null) {
+            sets.add("entity_folder_id=?");
+            args.add((dataEntityEntity.getEntityFolderId() == null || dataEntityEntity.getEntityFolderId().isEmpty())? null : UUID.fromString(dataEntityEntity.getEntityFolderId()));
+        }
+        if (updateNulls || dataEntityEntity.getRoles() != null) {
             sets.add("roles = ?");
             args.add(dataEntityEntity.getRoles());
         }
@@ -475,6 +502,9 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
             jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".entity SET " + StringUtils.join(sets, ", ")
                     + " WHERE id=?", args.toArray());
         }
+
+        if (updateNulls && dataEntityEntity.getSystemIds() == null)
+            dataEntityEntity.setSystemIds(new ArrayList<>());
 
         if (dataEntityEntity.getSystemIds() != null) {
             List<String> currSystemIds = getSystemIdsForDataEntity(de.getId(), userDetails);
@@ -747,14 +777,18 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                 + "left join (select e2t.artifact_id, string_agg(t.name, ',') as tags from da_"
                 + userDetails.getTenant() + ".tag t join da_" + userDetails.getTenant()
                 + ".tag_to_artifact e2t on e2t.tag_id=t.id group by e2t.artifact_id) t on t.artifact_id=ea.id ";
-        String queryForItems = "SELECT * FROM (" + subQuery + ") as tbl1 " + join + where +
+        String queryForItems = "SELECT tbl1.*, eat.name as attribute_type_name FROM (" + subQuery + ") as tbl1 " + join
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_attribute_type eat ON tbl1.attribute_type=eat.id "
+                + where +
                 " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
                 + searchRequest.getLimit();
 
         List<FlatDataEntityAttribute> items = jdbcTemplate.query(queryForItems, new FlatDataEntityAttributeRowMapper(),
                 whereValues.toArray());
 
-        String queryForTotal = "SELECT COUNT(tbl1.id) FROM (" + subQuery + ") as tbl1 " + join + where;
+        String queryForTotal = "SELECT COUNT(tbl1.id) FROM (" + subQuery + ") as tbl1 " + join
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_attribute_type eat ON tbl1.attribute_type=eat.id "
+                + where;
         final int[] count = { 0 };
         jdbcTemplate.query(
                 queryForTotal,
@@ -797,14 +831,18 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                         + ".entity_attribute "
                         + hasAccessJoinQuery;
         }
-        String queryForItems = "SELECT * FROM (" + subQuery + ") as tbl1 " + join + where +
+        String queryForItems = "SELECT tbl1.*, eat.name as attribute_type_name FROM (" + subQuery + ") as tbl1 " + join
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_attribute_type eat ON tbl1.attribute_type=eat.id "
+                + where +
                 " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
                 + searchRequest.getLimit();
 
         List<FlatDataEntityAttribute> items = jdbcTemplate.query(queryForItems, new FlatDataEntityAttributeRowMapper(),
                 whereValues.toArray());
 
-        String queryForTotal = "SELECT COUNT(tbl1.id) FROM (" + subQuery + ") as tbl1 " + join + where;
+        String queryForTotal = "SELECT COUNT(tbl1.id) FROM (" + subQuery + ") as tbl1 " + join
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_attribute_type eat ON tbl1.attribute_type=eat.id "
+                + where;
         final int[] count = { 0 };
         jdbcTemplate.query(
                 queryForTotal,
@@ -1025,19 +1063,19 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
         if (publishedEntityId != null) {
             jdbcTemplate.update(
                     "UPDATE da_" + userDetails.getTenant()
-                            + ".entity e SET name = draft.name, description = draft.description, "
-                            + " entity_folder_id = draft.entity_folder_id, roles = draft.roles,"
+                            + ".entity e SET name = draft.name, tech_name = draft.tech_name, description = draft.description, "
+                            + " short_description = draft.short_description, entity_folder_id = draft.entity_folder_id, roles = draft.roles,"
                             + " ancestor_draft_id = draft.id, modified = draft.modified, modifier = draft.modifier "
-                            + " from (select id, name, description, entity_folder_id, modified, modifier, roles FROM da_"
+                            + " from (select id, name, tech_name, description, short_description, entity_folder_id, modified, modifier, roles FROM da_"
                             + userDetails.getTenant() + ".entity) as draft where e.id = ? and draft.id = ?",
                     UUID.fromString(publishedEntityId), UUID.fromString(draftEntityId));
             res = publishedEntityId;
         } else {
             UUID newId = UUID.randomUUID();
             jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                    + ".entity (id, name, description, entity_folder_id, state, workflow_task_id, "
+                    + ".entity (id, name, tech_name, description, short_description, entity_folder_id, state, workflow_task_id, "
                     + "published_id, published_version_id, ancestor_draft_id, created, creator, modified, modifier, roles) "
-                    + "SELECT ?, name, description, entity_folder_id, ?, ?, ?, ?, ?, created, creator, modified, modifier, roles "
+                    + "SELECT ?, name, tech_name, description, short_description, entity_folder_id, ?, ?, ?, ?, ?, created, creator, modified, modifier, roles "
                     + "FROM da_" + userDetails.getTenant() + ".entity where id = ?",
                     newId, ArtifactState.PUBLISHED.toString(), null, null, null,
                     UUID.fromString(draftEntityId), UUID.fromString(draftEntityId));
@@ -1063,9 +1101,9 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
         UUID newId = draftId != null ? UUID.fromString(draftId) : UUID.randomUUID();
 
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                + ".entity (id, name, description, entity_folder_id, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier, roles) "
+                + ".entity (id, name, description, short_description, entity_folder_id, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier, roles) "
                 +
-                "SELECT ?, name, description, entity_folder_id, ?, ?, id, version_id, created, creator, modified, modifier, roles FROM da_"
+                "SELECT ?, name, description, short_description, entity_folder_id, ?, ?, id, version_id, created, creator, modified, modifier, roles FROM da_"
                 + userDetails.getTenant() + ".entity where id = ?",
                 newId, ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
@@ -1179,6 +1217,7 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                         ld.setTo(rs.getString("target_id"));
                         ld.setPoints(rs.getString("points"));
                         ld.setZOrder(1);
+                        ld.setTags(tagService.getArtifactTags(ld.getId(), userDetails).stream().map(t -> new Relation(t.getId(), t.getName())).collect(Collectors.toList()));
 
                         links.add(ld);
 
@@ -1194,7 +1233,7 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
         return res;
     }
 
-    public List<GojsModelNodeData> updateModel(UpdatableGojsModelData updatableGojsModelData, UserDetails userDetails) {
+    public List<GojsModelNodeData> updateModel(UpdatableGojsModelData updatableGojsModelData, UserDetails userDetails) throws LottabyteException {
 
         if (updatableGojsModelData.getUpdateNodes() != null) {
             for (GojsModelNodeData nodeData : updatableGojsModelData.getUpdateNodes()) {
@@ -1225,7 +1264,7 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                             + ".reference SET source_id=?, target_id=?, points=?, modified=?, modifier=?, history_end=? WHERE id=?",
                             UUID.fromString(linkData.getFrom()), UUID.fromString(linkData.getTo()),
                             linkData.getPoints(), ts, userDetails.getUid(), ts, UUID.fromString(linkData.getId()));
-                } else {//
+                } else {
                     jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
                             + ".reference (id, source_id, source_artifact_type, target_id, "
                             + "target_artifact_type, reference_type, created, creator, modified, modifier, history_start, history_end, version_id, published_id, points)"
@@ -1236,6 +1275,36 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
                             ts, userDetails.getUid(), ts, userDetails.getUid(), ts, ts, 0,
                             UUID.fromString(linkData.getFrom()), linkData.getPoints());
 
+                }
+
+                List<Relation> currTags = jdbcTemplate.query("SELECT t.id, t.name FROM da_" + userDetails.getTenant()
+                                + ".tag_to_artifact t2a JOIN da_" + userDetails.getTenant() + ".tag t ON t2a.tag_id=t.id WHERE t2a.artifact_id=?",
+                        new RowMapper<Relation>() {
+                            @Override
+                            public Relation mapRow(ResultSet rs, int rowNum) throws SQLException {
+                                return new Relation(rs.getString("id"), rs.getString("name"));
+                            }
+                        }, UUID.fromString(linkData.getId()));
+
+                for (Relation tag : currTags) {
+                    if (linkData.getTags().stream().noneMatch(t -> t.getName().equals(tag.getName())))
+                        tagRepository.unlinkTagFromArtifact(tag.getId(), linkData.getId(), userDetails);
+                }
+
+                for (Relation tag : linkData.getTags()) {
+                    Relation finalTag = tag;
+                    if (currTags.stream().noneMatch(t -> t.getName().equals(finalTag.getName()))) {
+                        Tag linkTag = tagRepository.getTagByName(tag.getName(), null, userDetails);
+                        if (linkTag == null) {
+                            TagEntity newTagEntity = new TagEntity();
+                            newTagEntity.setName(tag.getName());
+                            linkTag = tagRepository.createTag(newTagEntity, userDetails);
+                        }
+                        if (linkTag != null) {
+                            if (!tagRepository.tagIsLinkedToArtifact(linkTag.getId(), linkData.getId(), userDetails))
+                                tagRepository.linkTagToArtifact(linkTag.getId(), linkData.getId(), "link", userDetails);
+                        }
+                    }
                 }
             }
         }

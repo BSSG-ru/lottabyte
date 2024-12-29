@@ -133,6 +133,7 @@ public class ModeledObject<T extends Entity> {
         fo.setName(this.metadata.getName());
         fo.setVersionId(this.metadata.getVersionId());
         fo.setDescription(this.entity.getDescription());
+        fo.setShortDescription(this.entity.getShortDescription());
         fo.setModified(this.metadata.getModifiedAt());
         return fo;
     }

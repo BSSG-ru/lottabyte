@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper=false)
 public class TaskRunEntity extends Entity {
-    private String taskId;
+    private String taskScheduleId;
     private String resultSampleId;
     private Integer resultSampleVersionId;
     private String resultMsg;

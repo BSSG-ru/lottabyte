@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
+import ru.bssg.lottabyte.core.model.ArtifactState;
 import ru.bssg.lottabyte.core.model.ArtifactType;
 import ru.bssg.lottabyte.core.model.HttpStatus;
 import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
@@ -131,7 +132,7 @@ public class TagService {
         }
         if (!tagRepository.tagIsLinkedToArtifact(tag.getId(), artifactId, userDetails))
             throw new LottabyteException(Message.LBE01302, userDetails.getLanguage(), tag.getName(), artifactId);
-        tagRepository.unlinkTagFromArtifact(tag.getId(), artifactId, artifactType, userDetails);
+        tagRepository.unlinkTagFromArtifact(tag.getId(), artifactId, userDetails);
     }
 
     public void mergeTags(String fromId, ArtifactType fromType, String toId, ArtifactType toType, UserDetails userDetails) {
@@ -140,7 +141,7 @@ public class TagService {
         fromTags.stream().filter(x -> toTags.stream().noneMatch(y -> y.getId().equals(x.getId())))
                 .forEach(z -> tagRepository.linkTagToArtifact(z.getId(), toId, toType.getText(), userDetails));
         toTags.stream().filter(x -> fromTags.stream().noneMatch(y -> y.getId().equals(x.getId())))
-                .forEach(z -> tagRepository.unlinkTagFromArtifact(z.getId(), toId, toType.getText(), userDetails));
+                .forEach(z -> tagRepository.unlinkTagFromArtifact(z.getId(), toId, userDetails));
     }
 
     public List<FlatTag> searchTags(String query, Integer offset, Integer limit, UserDetails userDetails) {
@@ -156,6 +157,7 @@ public class TagService {
             .modifiedBy(tag.getMetadata().getModifiedBy())
             .modifiedAt(tag.getMetadata().getModifiedAt())
             .artifactType(tag.getMetadata().getArtifactType())
+            .artifactState(ArtifactState.PUBLISHED.name())
             .effectiveStartDate(tag.getMetadata().getEffectiveStartDate())
             .effectiveEndDate(tag.getMetadata().getEffectiveEndDate())
             .tags(Helper.getEmptyListIfNull(tag.getMetadata().getTags()).stream()

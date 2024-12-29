@@ -17,8 +17,8 @@ public class SearchableDataEntityFolder extends SearchableArtifact {
     protected List<ParentRelation> children;
 
     @Builder
-    public SearchableDataEntityFolder(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String parentId, List<ParentRelation> children) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableDataEntityFolder(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String parentId, List<ParentRelation> children) {
+        super(id, versionId, name, description, "", tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.parentId = parentId;
         this.children = children;
     }

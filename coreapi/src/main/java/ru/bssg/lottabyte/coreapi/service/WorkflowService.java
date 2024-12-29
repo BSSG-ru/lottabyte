@@ -383,100 +383,104 @@ public class WorkflowService {
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public WorkflowActionResultWrapper<?> postWorkflowTaskAction(String workflowTaskId, String workflowAction,
             List<WorkflowActionParamResult> actionParams, UserDetails userDetails) throws LottabyteException {
+        try {
+            WorkflowTask wfTask = workflowRepository.getWorkflowTaskById(workflowTaskId, userDetails);
+            WorkflowActionResultWrapper res = null;
 
-        WorkflowTask wfTask = workflowRepository.getWorkflowTaskById(workflowTaskId, userDetails);
-        WorkflowActionResultWrapper res = null;
+            if (wfTask != null) {
+                // Internal workflow engine
+                WorkflowTaskActionEntity workflowTaskActionEntity = new WorkflowTaskActionEntity();
+                workflowTaskActionEntity.setWorkflowAction(workflowAction);
+                workflowTaskActionEntity.setWorkflowTaskId(workflowTaskId);
+                UpdatableWorkflowTaskActionEntity updatableWorkflowTaskActionEntity = new UpdatableWorkflowTaskActionEntity(
+                        workflowTaskActionEntity);
+                WorkflowTaskAction workflowTaskAction = workflowTaskActionService
+                        .createWorkflowTaskAction(updatableWorkflowTaskActionEntity, actionParams, userDetails);
 
-        if (wfTask != null) {
-            // Internal workflow engine
-            WorkflowTaskActionEntity workflowTaskActionEntity = new WorkflowTaskActionEntity();
-            workflowTaskActionEntity.setWorkflowAction(workflowAction);
-            workflowTaskActionEntity.setWorkflowTaskId(workflowTaskId);
-            UpdatableWorkflowTaskActionEntity updatableWorkflowTaskActionEntity = new UpdatableWorkflowTaskActionEntity(
-                    workflowTaskActionEntity);
-            WorkflowTaskAction workflowTaskAction = workflowTaskActionService
-                    .createWorkflowTaskAction(updatableWorkflowTaskActionEntity, actionParams, userDetails);
+                if (wfTask.getEntity().getArtifactId() != null && wfTask.getEntity().getArtifactType() != null) {
 
-            if (wfTask.getEntity().getArtifactId() != null && wfTask.getEntity().getArtifactType() != null) {
-
-                List<WorkflowAction> wfActions = getWorkflowTaskActionsById(workflowTaskId, userDetails);
-                if (wfActions.stream().map(x -> x.getId()).noneMatch(y -> y.equals(workflowAction)))
-                    throw new LottabyteException(
-                            Message.LBE03007,
-                                    userDetails.getLanguage(),
-                            workflowAction);
-
-                IWorkflowableService wfService = getWorkflowServiceByType(wfTask.getEntity().getArtifactType());
-                if (workflowAction.equals("publish")) {
-                    res = new WorkflowActionResultWrapper<>(
-                            wfService.wfPublish(wfTask.getEntity().getArtifactId(), userDetails), true);
-                } else if (workflowAction.equals("cancel")) {
-                    wfService.wfCancel(wfTask.getEntity().getArtifactId(), userDetails);
-                    res = new WorkflowActionResultWrapper<>(null, true);
-                } else if (workflowAction.equals("approve_removal")) {
-                    if (!WorkflowState.MARKED_FOR_REMOVAL.name().equals(wfTask.getEntity().getWorkflowState()))
+                    List<WorkflowAction> wfActions = getWorkflowTaskActionsById(workflowTaskId, userDetails);
+                    if (wfActions.stream().map(x -> x.getId()).noneMatch(y -> y.equals(workflowAction)))
                         throw new LottabyteException(
-                                Message.LBE03005,
-                                        userDetails.getLanguage());
-                    wfService.wfApproveRemoval(wfTask.getEntity().getArtifactId(), userDetails);
-                    res = new WorkflowActionResultWrapper<>(null, true);
-                }
+                                Message.LBE03007,
+                                userDetails.getLanguage(),
+                                workflowAction);
 
-            }
-            if (res != null)
-                workflowRepository.deleteWorkflowTask(workflowTaskId, userDetails);
-        } else {
-            // Flowable wokrflow engine
-            List<Task> tasks = taskService.createTaskQuery().taskId(workflowTaskId).list();
-            if (tasks != null && !tasks.isEmpty()) {
-                Task task = tasks.get(0);
-                Map<String, Object> wfVariables = taskService.getVariables(task.getId());
-                IWorkflowableService wfService = getWorkflowServiceByType(ArtifactType.fromString((String)wfVariables.get("artifact_type")));
-                String artifactId = (String)wfVariables.get("artifact_id");
-                TaskFormData tfd = formService.getTaskFormData(task.getId());
-                List<String> formActions = new ArrayList<>();
-                if (tfd != null && tfd.getFormProperties() != null && !tfd.getFormProperties().isEmpty()) {
-                    FormProperty actionProperty = tfd.getFormProperties().stream()
-                            .filter(x -> "action".equals(x.getId()) && x.getType().getName().equals("enum"))
-                            .findFirst().orElse(null);
-                    if (actionProperty != null) {
-                        Map<String, String> vals = (Map<String, String>) actionProperty.getType().getInformation("values");
-                        vals.keySet().stream().forEach(x -> formActions.add(x));
+                    IWorkflowableService wfService = getWorkflowServiceByType(wfTask.getEntity().getArtifactType());
+                    if (workflowAction.equals("publish")) {
+                        res = new WorkflowActionResultWrapper<>(
+                                wfService.wfPublish(wfTask.getEntity().getArtifactId(), userDetails), true);
+                    } else if (workflowAction.equals("cancel")) {
+                        wfService.wfCancel(wfTask.getEntity().getArtifactId(), userDetails);
+                        res = new WorkflowActionResultWrapper<>(null, true);
+                    } else if (workflowAction.equals("approve_removal")) {
+                        if (!WorkflowState.MARKED_FOR_REMOVAL.name().equals(wfTask.getEntity().getWorkflowState()))
+                            throw new LottabyteException(
+                                    Message.LBE03005,
+                                    userDetails.getLanguage());
+                        wfService.wfApproveRemoval(wfTask.getEntity().getArtifactId(), userDetails);
+                        res = new WorkflowActionResultWrapper<>(null, true);
                     }
+
                 }
-                if (!formActions.contains(workflowAction))
-                    throw new LottabyteException(
-                            Message.LBE03007,
-                                    userDetails.getLanguage(),
-                            workflowAction);
-                Map<String, Object> variables = new HashMap<String, Object>();
-                variables.put("action", workflowAction);
-                variables.put("ud_uid", userDetails.getUid());
-                variables.put("ud_tenant", userDetails.getTenant());
-                variables.put("ud_stewardid", userDetails.getStewardId());
-                taskService.complete(task.getId(), variables);
-                ModeledObject mo = wfService.getById(artifactId, userDetails);
-                if (mo != null) {
-                    WorkflowableMetadata wfMetadata = (WorkflowableMetadata)mo.getMetadata();
-                    if (wfMetadata.getState() != null && wfMetadata.getState() == ArtifactState.DRAFT_HISTORY) {
-                        String newId = wfService.getIdByAncestorDraftId(artifactId, userDetails);
-                        if (newId != null) {
-                            mo = wfService.getById(newId, userDetails);
-                        } else {
-                            mo = null;
+                if (res != null)
+                    workflowRepository.deleteWorkflowTask(workflowTaskId, userDetails);
+            } else {
+                // Flowable wokrflow engine
+                List<Task> tasks = taskService.createTaskQuery().taskId(workflowTaskId).list();
+                if (tasks != null && !tasks.isEmpty()) {
+                    Task task = tasks.get(0);
+                    Map<String, Object> wfVariables = taskService.getVariables(task.getId());
+                    IWorkflowableService wfService = getWorkflowServiceByType(ArtifactType.fromString((String) wfVariables.get("artifact_type")));
+                    String artifactId = (String) wfVariables.get("artifact_id");
+                    TaskFormData tfd = formService.getTaskFormData(task.getId());
+                    List<String> formActions = new ArrayList<>();
+                    if (tfd != null && tfd.getFormProperties() != null && !tfd.getFormProperties().isEmpty()) {
+                        FormProperty actionProperty = tfd.getFormProperties().stream()
+                                .filter(x -> "action".equals(x.getId()) && x.getType().getName().equals("enum"))
+                                .findFirst().orElse(null);
+                        if (actionProperty != null) {
+                            Map<String, String> vals = (Map<String, String>) actionProperty.getType().getInformation("values");
+                            vals.keySet().stream().forEach(x -> formActions.add(x));
                         }
                     }
-                }
-                return new WorkflowActionResultWrapper<>(mo, true);
-            } else {
-                // No workflow task found in any of the engines
-                throw new LottabyteException(
-                        Message.LBE03002,
+                    if (!formActions.contains(workflowAction))
+                        throw new LottabyteException(
+                                Message.LBE03007,
                                 userDetails.getLanguage(),
-                        workflowTaskId);
+                                workflowAction);
+                    Map<String, Object> variables = new HashMap<String, Object>();
+                    variables.put("action", workflowAction);
+                    variables.put("ud_uid", userDetails.getUid());
+                    variables.put("ud_tenant", userDetails.getTenant());
+                    variables.put("ud_stewardid", userDetails.getStewardId());
+                    variables.put("ud_language", userDetails.getLanguage());
+                    taskService.complete(task.getId(), variables);
+                    ModeledObject mo = wfService.getById(artifactId, userDetails);
+                    if (mo != null) {
+                        WorkflowableMetadata wfMetadata = (WorkflowableMetadata) mo.getMetadata();
+                        if (wfMetadata.getState() != null && wfMetadata.getState() == ArtifactState.DRAFT_HISTORY) {
+                            String newId = wfService.getIdByAncestorDraftId(artifactId, userDetails);
+                            if (newId != null) {
+                                mo = wfService.getById(newId, userDetails);
+                            } else {
+                                mo = null;
+                            }
+                        }
+                    }
+                    return new WorkflowActionResultWrapper<>(mo, true);
+                } else {
+                    // No workflow task found in any of the engines
+                    throw new LottabyteException(
+                            Message.LBE03002,
+                            userDetails.getLanguage(),
+                            workflowTaskId);
+                }
             }
+            return res;
+        } catch (Exception e) {
+            throw new LottabyteException(e.getMessage(), e);
         }
-        return res;
     }
 
     public String getWorkflowStateName(String state, UserDetails userDetails) {
@@ -489,6 +493,7 @@ public class WorkflowService {
                 new SearchColumn("description", SearchColumn.ColumnType.Text),
                 new SearchColumn("at.name", SearchColumn.ColumnType.Text),
                 new SearchColumn("artifact_action", SearchColumn.ColumnType.Text),
+                new SearchColumn("modified", SearchColumn.ColumnType.Text),
         };
 
         SearchColumnForJoin[] joinColumns = {};

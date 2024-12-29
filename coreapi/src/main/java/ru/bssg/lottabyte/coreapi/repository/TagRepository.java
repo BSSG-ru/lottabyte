@@ -65,7 +65,11 @@ public class TagRepository extends GenericArtifactRepository<Tag> {
     }
 
     public Tag getTagByName(String tagName, String tagCategoryId, UserDetails userDetails) {
-        List<Tag> tagList = jdbcTemplate.query("SELECT id, name, description, tag_category_id, history_start, "
+
+        List<Tag> tagList = tagCategoryId == null ? jdbcTemplate.query("SELECT id, name, description, tag_category_id, history_start, "
+                + "history_end, version_id, created, creator, modified, modifier FROM da_" + userDetails.getTenant()
+                + ".tag WHERE name=?", new TagRowMapper(), tagName)
+                : jdbcTemplate.query("SELECT id, name, description, tag_category_id, history_start, "
                 + "history_end, version_id, created, creator, modified, modifier FROM da_" + userDetails.getTenant()
                 + ".tag WHERE tag_category_id=? AND name=?", new TagRowMapper(), UUID.fromString(tagCategoryId), tagName);
 
@@ -140,7 +144,7 @@ public class TagRepository extends GenericArtifactRepository<Tag> {
         tag.setModifiedBy(userDetails.getUid());
 
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".tag (id, name, description, tag_category_id, created, creator, modified, modifier, history_start, history_end) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                id, tagEntity.getName(), tagEntity.getDescription(), UUID.fromString(tagEntity.getTagCategoryId()), tag.getCreatedAt(), tag.getCreatedBy(),
+                id, tagEntity.getName(), tagEntity.getDescription(), UUID.fromString(tagEntity.getTagCategoryId() == null ? "d7cf3076-4cb4-4b74-8d69-938a70018db3" : tagEntity.getTagCategoryId()), tag.getCreatedAt(), tag.getCreatedBy(),
                 tag.getModifiedAt(), tag.getModifiedBy(), now, now);
 
         return tag;
@@ -197,9 +201,25 @@ public class TagRepository extends GenericArtifactRepository<Tag> {
                 UUID.fromString(tagId), now, now, now, userDetails.getUid(), now, userDetails.getUid());
     }
 
-    public void unlinkTagFromArtifact(String tagId, String artifactId, String artifactType, UserDetails userDetails) {
+    public void linkTagNameToArtifact(String tagName, String artifactId, String artifactType, UserDetails userDetails) {
+        LocalDateTime now = LocalDateTime.now();
+
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".tag_to_artifact (id, artifact_id, "
+                + "artifact_type, tag_id, history_start, history_end, version_id, created, creator, modified, modifier) "
+                + " SELECT ?,?,?,id,?,?,0,?,?,?,? FROM da_" + userDetails.getTenant() + ".tag WHERE name=?",
+                UUID.randomUUID(), UUID.fromString(artifactId), artifactType,
+                now, now, now, userDetails.getUid(), now, userDetails.getUid(), tagName);
+    }
+
+    public void unlinkTagFromArtifact(String tagId, String artifactId, UserDetails userDetails) {
         jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".tag_to_artifact WHERE artifact_id=? AND tag_id=?",
                 UUID.fromString(artifactId), UUID.fromString(tagId));
+    }
+
+    public void unlinkTagNameFromArtifact(String tagName, String artifactId, UserDetails userDetails) {
+        jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".tag_to_artifact WHERE artifact_id=? AND tag_id IN (SELECT id FROM da_"
+                + userDetails.getTenant() + ".tag WHERE name=?)",
+                UUID.fromString(artifactId), tagName);
     }
 
     public List<FlatTag> searchTags(String query, Integer offset, Integer limit, UserDetails userDetails) {

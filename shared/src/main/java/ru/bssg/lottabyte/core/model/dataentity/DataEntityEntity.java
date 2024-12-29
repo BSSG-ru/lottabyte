@@ -15,6 +15,7 @@ public class DataEntityEntity extends Entity {
     private List<String> systemIds;
     private String businessEntityId;
     private String roles;
+    private String techName;
 
     public DataEntityEntity() {
         super(ArtifactType.entity);

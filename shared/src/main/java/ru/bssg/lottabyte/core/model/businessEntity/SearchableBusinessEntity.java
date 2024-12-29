@@ -36,8 +36,8 @@ public class SearchableBusinessEntity extends SearchableArtifact {
     protected String roles;
 
     @Builder
-    public SearchableBusinessEntity(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String techName, String definition, String regulation, List<String> altNames, List<String> synonymIds, List<String> beLinkIds, String domainId, String domainName, String formula, String examples, String link, String datatypeId, String limits, String roles) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableBusinessEntity(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String techName, String definition, String regulation, List<String> altNames, List<String> synonymIds, List<String> beLinkIds, String domainId, String domainName, String formula, String examples, String link, String datatypeId, String limits, String roles) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.techName = techName;
         this.definition = definition;
         this.regulation = regulation;

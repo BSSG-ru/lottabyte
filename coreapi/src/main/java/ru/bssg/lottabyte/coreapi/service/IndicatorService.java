@@ -1,7 +1,7 @@
 package ru.bssg.lottabyte.coreapi.service;
 
+import org.apache.commons.lang3.StringUtils;
 import org.flowable.engine.runtime.ProcessInstance;
-import com.amazonaws.util.StringUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +15,7 @@ import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.businessEntity.BusinessEntity;
+import ru.bssg.lottabyte.core.model.dataasset.DataAsset;
 import ru.bssg.lottabyte.core.model.dataentity.*;
 import ru.bssg.lottabyte.core.model.datatype.DataType;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
@@ -60,10 +61,12 @@ public class IndicatorService extends WorkflowableService<Indicator> {
     private final EntitySampleRepository entitySampleRepository;
     private final DataTypeRepository dataTypeRepository;
     private final DQRuleService dqRuleService;
+    private final UserFavService userFavService;
 
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
             new SearchColumn("description", SearchColumn.ColumnType.Text),
+            new SearchColumn("short_description", SearchColumn.ColumnType.Text),
             new SearchColumn("modified", SearchColumn.ColumnType.Timestamp),
             new SearchColumn("calc_code", SearchColumn.ColumnType.Text),
             new SearchColumn("tags", SearchColumn.ColumnType.Text),
@@ -83,8 +86,9 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             IndicatorRepository indicatorRepository, DomainRepository domainRepository,
             EntitySampleRepository entitySampleRepository, TagService tagService,
             WorkflowService workflowService, ReferenceService referenceService,
-            DataTypeRepository dataTypeRepository, DQRuleService dqRuleService) {
-        super(indicatorRepository, workflowService, tagService, ArtifactType.indicator, elasticsearchService);
+            DataTypeRepository dataTypeRepository, DQRuleService dqRuleService,
+            UserFavService userFavService) {
+        super(indicatorRepository, workflowService, tagService, ArtifactType.indicator, elasticsearchService, referenceService);
         this.dataAssetService = dataAssetService;
         this.customAttributeDefinitionService = customAttributeDefinitionService;
         this.commentService = commentService;
@@ -97,10 +101,22 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         this.entitySampleRepository = entitySampleRepository;
         this.dataTypeRepository = dataTypeRepository;
         this.dqRuleService = dqRuleService;
+        this.userFavService = userFavService;
     }
 
     public Boolean allIndicatorsExist(List<String> systemIds, UserDetails userDetails) {
         return indicatorRepository.allIndicatorsExist(systemIds, userDetails);
+    }
+
+    public Indicator wfSend(String draftId, UserDetails userDetails) throws LottabyteException {
+        Indicator draft = indicatorRepository.getById(draftId, userDetails);
+        if (draft == null)
+            throw new LottabyteException(
+                    Message.LBE03004,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+
+        return draft;
     }
 
     public Indicator wfPublish(String draftIndicatorId, UserDetails userDetails) throws LottabyteException {
@@ -122,11 +138,18 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             }
 
             if (draft.getEntity().getDqRules() != null && !draft.getEntity().getDqRules().isEmpty())
-                mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), null, userDetails);
+                mergeDQRules(publishedId, publishedId, draft.getEntity().getDqRules(), null, userDetails);
 
+            if (draft.getEntity().getTermLinkIds() != null && !draft.getEntity().getTermLinkIds().isEmpty()) {
+                createTermLinksReference(draft.getEntity().getTermLinkIds(), publishedId, publishedId, userDetails);
+            }
 
             tagService.mergeTags(draftIndicatorId, serviceArtifactType, publishedId, serviceArtifactType, userDetails);
+
             indicator = getIndicatorById(publishedId, userDetails);
+
+            updateFormulaReferences(indicator.getId(), indicator.getEntity().getFormula(), userDetails);
+
             elasticsearchService.insertElasticSearchEntity(
                     Collections.singletonList(getSearchableArtifact(indicator, userDetails)), userDetails);
         } else {
@@ -151,7 +174,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
                 updateReferenceForAssets(draft.getEntity().getDataAssetIds(), draft.getId(), publishedId, userDetails);
                 createReferenceForAssets(draft.getEntity().getDataAssetIds(), publishedId, publishedId, userDetails);
 
-                mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
+                mergeDQRules(publishedId, publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
             }
 
             if (draft.getEntity().getTermLinkIds() != null && !draft.getEntity().getTermLinkIds().isEmpty()) {
@@ -161,6 +184,9 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             tagService.mergeTags(draftIndicatorId, serviceArtifactType, publishedId, serviceArtifactType, userDetails);
 
             indicator = getIndicatorById(publishedId, userDetails);
+
+            updateFormulaReferences(indicator.getId(), indicator.getEntity().getFormula(), userDetails);
+
             elasticsearchService.updateElasticSearchEntity(
                     Collections.singletonList(getSearchableArtifact(indicator, userDetails)),
                     userDetails);
@@ -191,7 +217,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         return getIndicatorById(id, userDetails);
     }
 
-    public List<String> entityAttributeExistInAllFormulas(String entityAttributeId, UserDetails userDetails) {
+    public List<Indicator> entityAttributeExistInAllFormulas(String entityAttributeId, UserDetails userDetails) {
         return indicatorRepository.entityAttributeExistInAllFormulas(entityAttributeId, userDetails);
     }
 
@@ -334,7 +360,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         }
     }
 
-    public void mergeDQRules(String draftId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
+    public void mergeDQRules(String indicatorId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
 
         if (publishedRules != null) {
             for (EntitySampleDQRule rule : publishedRules) {
@@ -346,7 +372,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         if (draftRules != null) {
             for (EntitySampleDQRule rule : draftRules) {
                 EntitySampleDQRuleEntity e = new EntitySampleDQRuleEntity();
-                e.setIndicatorId(publishedId);
+                e.setIndicatorId(indicatorId);
                 e.setDqRuleId(rule.getEntity().getDqRuleId());
                 e.setPublishedId(publishedId);
                 e.setSettings(rule.getEntity().getSettings());
@@ -426,7 +452,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         }
     }
 
-    public Indicator patchIndicator(String indicatorId, UpdatableIndicatorEntity indicatorEntity,
+    public Indicator patchIndicator(String indicatorId, UpdatableIndicatorEntity indicatorEntity, boolean updateNulls,
             UserDetails userDetails) throws LottabyteException {
         Indicator current = getIndicatorById(indicatorId, userDetails);
         String draftId = null;
@@ -450,11 +476,28 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             throw new LottabyteException(HttpStatus.NOT_FOUND, e.getMessage());
         }
 
-        if (indicatorEntity.getDataAssetIds() != null && !indicatorEntity.getDataAssetIds().isEmpty()
-                && !dataAssetService.allDataAssetsExist(indicatorEntity.getDataAssetIds(), userDetails))
-            throw new LottabyteException(Message.LBE03105,
-                            userDetails.getLanguage(),
-                            org.apache.commons.lang3.StringUtils.join(indicatorEntity.getDataAssetIds(), ", "));
+        if (indicatorEntity.getDataAssetIds() != null && !indicatorEntity.getDataAssetIds().isEmpty()) {
+            List<String> ids = dataAssetService.allDataAssetsExist(indicatorEntity.getDataAssetIds(), userDetails);
+            if (!ids.isEmpty()) {
+                List<String> links = new ArrayList<>();
+                for (String id : ids) {
+                    DataAsset asset = null;
+                    try {
+                        asset = dataAssetService.getDataAssetById(id, userDetails);
+                    } catch (LottabyteException le) {
+                        log.error(le.getMessage(), le);
+                    }
+
+                    if (asset == null)
+                        links.add(id);
+                    else
+                        links.add("link|data_asset|" + asset.getName() + "|" + id);
+                }
+                throw new LottabyteException(Message.LBE03105,
+                        userDetails.getLanguage(),
+                        org.apache.commons.lang3.StringUtils.join(links, ", "));
+            }
+        }
         if (indicatorEntity.getName() != null && indicatorEntity.getName().isEmpty())
             throw new LottabyteException(Message.LBE02402,
                             userDetails.getLanguage(), indicatorEntity.getName());
@@ -468,6 +511,13 @@ public class IndicatorService extends WorkflowableService<Indicator> {
                 }
             }
         }
+
+        if (updateNulls && indicatorEntity.getDqRules() == null)
+            indicatorEntity.setDqRules(new ArrayList<>());
+        if (updateNulls && indicatorEntity.getDataAssetIds() == null)
+            indicatorEntity.setDataAssetIds(new ArrayList<>());
+        if (updateNulls && indicatorEntity.getTermLinkIds() == null)
+            indicatorEntity.setTermLinkIds(new ArrayList<>());
 
         ProcessInstance pi = null;
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
@@ -534,7 +584,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             }
         }
 
-        indicatorRepository.patchIndicator(draftId, indicatorEntity, userDetails);
+        indicatorRepository.patchIndicator(draftId, indicatorEntity, updateNulls, userDetails);
         return getIndicatorById(draftId, userDetails);
     }
 
@@ -589,12 +639,89 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         }
     }
 
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Indicator archiveIndicatorById(String indicatorId, UserDetails userDetails) throws LottabyteException {
+        Indicator current = getIndicatorById(indicatorId, userDetails);
+        List<String> indicatorIdList = indicatorExistInAllFormulas(indicatorId, userDetails);
+        for (String id : indicatorIdList) {
+            if (!id.equals(indicatorId))
+                throw new LottabyteException(Message.LBE03204,
+                        userDetails.getLanguage(), indicatorId);
+        }
+
+        if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+            String draftId = indicatorRepository.getDraftId(indicatorId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00505,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.ARCHIVE, userDetails);
+            workflowTaskId = pi.getId();
+
+            indicatorRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            createTermLinksReference(current.getEntity().getTermLinkIds(), draftId, indicatorId, userDetails);
+            return getIndicatorById(draftId, userDetails);
+        } else {
+            String draftId = indicatorRepository.getDraftId(indicatorId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Indicator restoreIndicatorById(String indicatorId, UserDetails userDetails) throws LottabyteException {
+        Indicator current = getIndicatorById(indicatorId, userDetails);
+        List<String> indicatorIdList = indicatorExistInAllFormulas(indicatorId, userDetails);
+        for (String id : indicatorIdList) {
+            if (!id.equals(indicatorId))
+                throw new LottabyteException(Message.LBE03204,
+                        userDetails.getLanguage(), indicatorId);
+        }
+
+        if (ArtifactState.ARCHIVED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+            String draftId = indicatorRepository.getDraftId(indicatorId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00505,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.RESTORE, userDetails);
+            workflowTaskId = pi.getId();
+
+            indicatorRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            createTermLinksReference(current.getEntity().getTermLinkIds(), draftId, indicatorId, userDetails);
+            return getIndicatorById(draftId, userDetails);
+        } else {
+            String draftId = indicatorRepository.getDraftId(indicatorId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
+    }
+
     private void validateFormula(List<String> indicatorDataAssetIds, String indicatorName, String formula,
             UserDetails userDetails) throws LottabyteException, JsonProcessingException {
         if (formula == null || formula.isEmpty())
             return;
 
-        HashMap<String, String> failedEntityMap = new HashMap<>();
+        List<String> failedEntityAttrs = new ArrayList<>();
+        List<String> failedArtifacts = new ArrayList<>();
         JSONObject obj = new JSONObject(formula);
         Map<String, Object> entityMap = new ObjectMapper().readValue(obj.getJSONObject("entityMap").toString(),
                 HashMap.class);
@@ -603,18 +730,24 @@ public class IndicatorService extends WorkflowableService<Indicator> {
                     .get("data")).get("mention");
             String id = mention.get("id").toString();
             String artifactType = mention.get("artifact_type").toString();
+            String name = mention.get("name").toString();
             if (artifactType.equals("entity_attribute")) {
                 if (!indicatorRepository.entityAttributeExistsInDataAssets(id, indicatorDataAssetIds, userDetails))
-                    failedEntityMap.put(id, artifactType);
+                    failedEntityAttrs.add("link|entity|" + mention.get("entityName") + "|" + mention.get("entityId") + "/" + mention.get("attrName"));
             } else {
                 if (!indicatorRepository.existArtifactById(id, ArtifactType.fromString(artifactType), userDetails)) {
-                    failedEntityMap.put(id, artifactType);
+                    failedArtifacts.add("link|" + artifactType + "|" + name + "|" + id);
                 }
             }
         }
-        if (!failedEntityMap.isEmpty())
+        if (!failedEntityAttrs.isEmpty()) {
+            throw new LottabyteException(Message.LBE03207,
+                    userDetails.getLanguage(), StringUtils.join(failedEntityAttrs.toArray(), ", "), indicatorName);
+        }
+        if (!failedArtifacts.isEmpty()) {
             throw new LottabyteException(Message.LBE03203,
-                            userDetails.getLanguage(), failedEntityMap, indicatorName);
+                    userDetails.getLanguage(), StringUtils.join(failedArtifacts.toArray(), ", "), indicatorName);
+        }
     }
 
     public List<BusinessEntity> getTermLinksById(String beId, UserDetails userDetails) {
@@ -623,7 +756,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
 
     private void validateFormulaForDelete(String indicatorId, String formula, UserDetails userDetails)
             throws LottabyteException, JsonProcessingException {
-        if (StringUtils.isNullOrEmpty(formula))
+        if (formula == null || formula.isEmpty())
             return;
         JSONObject obj = new JSONObject(formula);
         Map<String, Object> entityMap = new ObjectMapper().readValue(obj.getJSONObject("entityMap").toString(),
@@ -654,6 +787,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
                     if (task != null)
                         y.setWorkflowState(task.getEntity().getWorkflowState());
                 });
+        res.getItems().forEach(d -> d.setIsInFav(userFavService.isInFav(d.getId(), userDetails)));
         return res;
     }
 
@@ -678,7 +812,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         return res;
     }
 
-    public Indicator getIndicatorVersionVersionById(String indicatorId, Integer versionId, UserDetails userDetails)
+    public Indicator getIndicatorVersionById(String indicatorId, Integer versionId, UserDetails userDetails)
             throws LottabyteException {
         Indicator indicator = indicatorRepository.getVersionById(indicatorId, versionId, userDetails);
         if (indicator == null)
@@ -687,6 +821,23 @@ public class IndicatorService extends WorkflowableService<Indicator> {
                             userDetails.getLanguage(),
                     indicatorId);
         fillIndicatorVersionRelations(indicator, userDetails);
+        return indicator;
+    }
+
+    public Indicator restoreIndicatorVersionById(String indicatorId, Integer versionId, UserDetails userDetails)
+            throws LottabyteException {
+        Indicator indicatorVersion = getIndicatorVersionById(indicatorId, versionId, userDetails);
+        UpdatableIndicatorEntity indicatorVersionEntity = new UpdatableIndicatorEntity(indicatorVersion.getEntity());
+
+        if (indicatorVersionEntity.getDataAssetIds() == null)
+            indicatorVersionEntity.setDataAssetIds(new ArrayList<>());
+
+        Indicator indicator = patchIndicator(indicatorId, indicatorVersionEntity, true, userDetails);
+
+        WorkflowableMetadata versionMetadata = (WorkflowableMetadata)indicatorVersion.getMetadata();
+
+        tagService.mergeTags(versionMetadata.getAncestorDraftId() == null ? indicatorVersion.getId() : versionMetadata.getAncestorDraftId(), serviceArtifactType, indicator.getId(), serviceArtifactType, userDetails);
+
         return indicator;
     }
 
@@ -762,6 +913,9 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             createTermLinksReference(current.getEntity().getTermLinkIds(), draftId, publishedId, userDetails);
         }
 
+        if (current.getEntity().getDqRules() != null && !current.getEntity().getDqRules().isEmpty())
+            mergeDQRules(draftId, publishedId, current.getEntity().getDqRules(), new ArrayList<>(), userDetails);
+
         tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
 
         return draftId;
@@ -816,6 +970,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         searchableIndicator.setVersionId(indicator.getMetadata().getVersionId());
         searchableIndicator.setName(indicator.getMetadata().getName());
         searchableIndicator.setDescription(indicator.getEntity().getDescription());
+        searchableIndicator.setShortDescription(indicator.getEntity().getShortDescription());
         searchableIndicator.setDomainId(indicator.getEntity().getDomainId());
         searchableIndicator.setIndicatorTypeId(indicator.getEntity().getIndicatorTypeId());
         searchableIndicator.setModifiedBy(indicator.getMetadata().getModifiedBy());
@@ -854,5 +1009,81 @@ public class IndicatorService extends WorkflowableService<Indicator> {
                 searchableIndicator.setDataTypeName(dt.getName());
         }
         return searchableIndicator;
+    }
+
+    private void updateFormulaReferences(String indicatorId, String formula, UserDetails userDetails) throws LottabyteException {
+
+
+
+        referenceService.deleteReferenceBySourceIdAndRefType(indicatorId, ReferenceType.INDICATOR_FORMULA_TO_INDICATOR, userDetails);
+        referenceService.deleteReferenceBySourceIdAndRefType(indicatorId, ReferenceType.INDICATOR_FORMULA_TO_ENTITY, userDetails);
+        //referenceService.deleteReferenceBySourceIdAndRefType(indicatorId, ReferenceType.INDICATOR_FORMULA_TO_ENTITY_ATTRIB, userDetails);
+
+        if (formula == null || formula.isEmpty())
+            return;
+
+        JSONObject json = new JSONObject(formula);
+
+        //List<String> entityAttribIds = new ArrayList<>();
+        List<String> entityIds = new ArrayList<>();
+        List<String> indicatorIds = new ArrayList<>();
+
+        if (json != null) {
+            JSONObject entityMap = json.getJSONObject("entityMap");
+            if (entityMap != null) {
+                for (String k : entityMap.keySet()) {
+                    JSONObject item = entityMap.getJSONObject(k);
+                    if (item != null && item.has("data") && item.getJSONObject("data").has("mention")) {
+                        JSONObject mention = item.getJSONObject("data").getJSONObject("mention");
+
+                        switch (mention.getString("artifact_type")) {
+                            case "entity_attribute":
+                                //String id = mention.getString("id");
+                                String eId = mention.getString("entityId");
+                                //if (id != null && !id.isEmpty() && !entityAttribIds.contains(id))
+                                    //entityAttribIds.add(id);
+                                if (eId != null && !eId.isEmpty() && !entityIds.contains(eId))
+                                    entityIds.add(eId);
+                                break;
+                            case "indicator":
+                                String iId = mention.getString("id");
+                                if (iId != null && !iId.isEmpty() && !indicatorIds.contains(iId))
+                                    indicatorIds.add(iId);
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        for (String id : indicatorIds) {
+            UpdatableReferenceEntity reference = new UpdatableReferenceEntity();
+            reference.setReferenceType(ReferenceType.INDICATOR_FORMULA_TO_INDICATOR);
+            reference.setSourceId(indicatorId);
+            reference.setTargetId(id);
+            reference.setSourceType(ArtifactType.indicator);
+            reference.setTargetType(ArtifactType.indicator);
+            referenceService.createReference(reference, userDetails);
+        }
+
+        for (String id : entityIds) {
+            UpdatableReferenceEntity reference = new UpdatableReferenceEntity();
+            reference.setReferenceType(ReferenceType.INDICATOR_FORMULA_TO_ENTITY);
+            reference.setSourceId(indicatorId);
+            reference.setTargetId(id);
+            reference.setSourceType(ArtifactType.indicator);
+            reference.setTargetType(ArtifactType.entity);
+            referenceService.createReference(reference, userDetails);
+        }
+
+        /*for (String id : entityAttribIds) {
+            UpdatableReferenceEntity reference = new UpdatableReferenceEntity();
+            reference.setReferenceType(ReferenceType.INDICATOR_FORMULA_TO_ENTITY_ATTRIB);
+            reference.setSourceId(indicatorId);
+            reference.setTargetId(id);
+            reference.setSourceType(ArtifactType.indicator);
+            reference.setTargetType(ArtifactType.entity_attribute);
+            referenceService.createReference(reference, userDetails);
+        }*/
     }
 }

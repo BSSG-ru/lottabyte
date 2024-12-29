@@ -67,6 +67,6 @@ public class SchedulerController {
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        return new ResponseEntity<>(schedulerService.getActiveTasks(userDetails), HttpStatus.OK);
+        return new ResponseEntity<>(schedulerService.getActiveTaskSchedules(userDetails), HttpStatus.OK);
     }
 }

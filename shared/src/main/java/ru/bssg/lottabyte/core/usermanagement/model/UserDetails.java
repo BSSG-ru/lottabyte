@@ -32,7 +32,9 @@ public class UserDetails extends ApiDataForLongPeriodToken {
     private String role;
     private String uid;
     private List<String> userRoles;
+    private String userRoleNames;
     private List<UUID> userDomains;
+    private List<UUID> stewardDomains;
     private String username;
     private String stewardId;
     @JsonIgnore

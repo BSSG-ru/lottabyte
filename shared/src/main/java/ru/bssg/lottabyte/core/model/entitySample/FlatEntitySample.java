@@ -5,6 +5,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import ru.bssg.lottabyte.core.model.FlatModeledObject;
+import ru.bssg.lottabyte.core.model.IFlatModeledObjectWithTags;
 
 import java.util.List;
 
@@ -12,7 +13,7 @@ import java.util.List;
 @NoArgsConstructor
 @ToString(callSuper=true)
 @EqualsAndHashCode(callSuper=false)
-public class FlatEntitySample extends FlatModeledObject {
+public class FlatEntitySample extends FlatModeledObject implements IFlatModeledObjectWithTags {
     private String systemId;
     private String entityId;
     private String entityQueryId;

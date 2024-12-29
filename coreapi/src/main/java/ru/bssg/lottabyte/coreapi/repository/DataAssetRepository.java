@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -16,6 +17,7 @@ import ru.bssg.lottabyte.core.model.dataasset.FlatDataAsset;
 import ru.bssg.lottabyte.core.model.dataasset.UpdatableDataAssetEntity;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
+import ru.bssg.lottabyte.core.model.product.Product;
 import ru.bssg.lottabyte.core.ui.model.*;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.util.ServiceUtils;
@@ -26,11 +28,13 @@ import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
     private final JdbcTemplate jdbcTemplate;
-    private static String[] extFields = { "system_id", "domain_id", "entity_id", "rows_count", "data_size", "roles" };
+    private static String[] extFields = { "system_id", "domain_id", "entity_id", "rows_count", "data_size", "roles", "tech_name" };
 
     @Autowired
     public DataAssetRepository(JdbcTemplate jdbcTemplate) {
@@ -40,15 +44,19 @@ public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
     }
 
     private static class DataAssetRowMapper implements RowMapper<DataAsset> {
+
         public static DataAsset mapDataAssetRow(ResultSet rs) throws SQLException {
             DataAssetEntity dataAssetEntity = new DataAssetEntity();
             dataAssetEntity.setName(rs.getString("name"));
             dataAssetEntity.setDescription(rs.getString("description"));
+            dataAssetEntity.setShortDescription(rs.getString("short_description"));
             dataAssetEntity.setSystemId(rs.getString("system_id"));
             dataAssetEntity.setDomainId(rs.getString("domain_id"));
             dataAssetEntity.setEntityId(rs.getString("entity_id"));
             dataAssetEntity.setDataSize(JDBCUtil.getInt(rs, "data_size"));
             dataAssetEntity.setRowsCount(JDBCUtil.getInt(rs, "rows_count"));
+            dataAssetEntity.setTechName(rs.getString("tech_name"));
+
             dataAssetEntity.setRoles(rs.getString("roles"));
 
             return new DataAsset(dataAssetEntity, new WorkflowableMetadata(rs, dataAssetEntity.getArtifactType()));
@@ -56,11 +64,12 @@ public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
 
         @Override
         public DataAsset mapRow(ResultSet rs, int rowNum) throws SQLException {
+
             return mapDataAssetRow(rs);
         }
     }
 
-    private static class FlatDataAssetRowMapper implements RowMapper<FlatDataAsset> {
+    public static class FlatDataAssetRowMapper implements RowMapper<FlatDataAsset> {
         @Override
         public FlatDataAsset mapRow(ResultSet rs, int rowNum) throws SQLException {
             FlatDataAsset flatDataAsset = new FlatDataAsset(DataAssetRowMapper.mapDataAssetRow(rs));
@@ -74,49 +83,67 @@ public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
         }
     }
 
-    public Boolean allDataAssetsExist(List<String> dataAssetIds, UserDetails userDetails) {
+    public List<String> allDataAssetsExist(List<String> dataAssetIds, UserDetails userDetails) {
+        List<String> res = new ArrayList<>();
         if (dataAssetIds == null || dataAssetIds.isEmpty())
-            return true;
-        Integer c = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM da_" + userDetails.getTenant() + ".data_asset WHERE state = ? and id IN ('"
+            return res;
+        res.addAll(dataAssetIds);
+        jdbcTemplate.query(
+                "SELECT id FROM da_" + userDetails.getTenant() + ".data_asset WHERE state = ? and id IN ('"
                         + StringUtils.join(dataAssetIds, "','") + "')",
-                Integer.class, ArtifactState.PUBLISHED.toString());
-        return c != null && dataAssetIds.size() == c;
+                new RowCallbackHandler() {
+                    @Override
+                    public void processRow(ResultSet rs) throws SQLException {
+                        res.remove(rs.getString("id"));
+                    }
+                }, ArtifactState.PUBLISHED.toString());
+        return res;
     }
 
     public boolean existsDataAssetWithSystemAndDomain(String systemId, String domainId, UserDetails userDetails) {
         return jdbcTemplate.queryForObject("SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".data_asset "
-                +
-                "WHERE system_id is not null and system_id = ? and domain_id is not null and domain_id = ?) AS EXISTS",
+                + "WHERE system_id = ? and domain_id = ? and state='PUBLISHED') AS EXISTS",
                 Boolean.class, UUID.fromString(systemId), UUID.fromString(domainId));
     }
 
     public boolean existsDataAssetWithSystemAndEntity(String systemId, String entityId, UserDetails userDetails) {
         return jdbcTemplate.queryForObject("SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".data_asset "
-                +
-                "WHERE system_id is not null and system_id = ? and entity_id is not null and entity_id = ?) AS EXISTS",
+                + "WHERE system_id = ? and entity_id = ? and state='PUBLISHED') AS EXISTS",
                 Boolean.class, UUID.fromString(systemId), UUID.fromString(entityId));
     }
 
     public boolean existsDataAssetWithDomain(String domainId, UserDetails userDetails) {
         return jdbcTemplate.queryForObject(
                 "SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".data_asset " +
-                        "WHERE domain_id is not null and domain_id = ? and state = ?) AS EXISTS",
+                        "WHERE domain_id = ? and state = ?) AS EXISTS",
                 Boolean.class, UUID.fromString(domainId), ArtifactState.PUBLISHED.toString());
     }
 
     public boolean existsDataAssetWithSystem(String systemId, UserDetails userDetails) {
         return jdbcTemplate.queryForObject(
                 "SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".data_asset " +
-                        "WHERE system_id is not null and system_id = ? and state = ?) AS EXISTS",
+                        "WHERE system_id = ? and state = ?) AS EXISTS",
                 Boolean.class, UUID.fromString(systemId), ArtifactState.PUBLISHED.toString());
     }
 
     public boolean existsDataAssetWithEntity(String entityId, UserDetails userDetails) {
         return jdbcTemplate.queryForObject(
                 "SELECT EXISTS(SELECT ID FROM da_" + userDetails.getTenant() + ".data_asset " +
-                        "WHERE entity_id is not null and entity_id = ? and state = ?) AS EXISTS",
+                        "WHERE entity_id = ? and state = ?) AS EXISTS",
                 Boolean.class, UUID.fromString(entityId), ArtifactState.PUBLISHED.toString());
+    }
+
+    public List<DataAsset> getDataAssetsWithEntity(String entityId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".data_asset " +
+                "WHERE entity_id = ? and state = ?", new RowMapper<DataAsset>() {
+            @Override
+            public DataAsset mapRow(ResultSet rs, int rowNum) throws SQLException {
+                DataAssetEntity e = new DataAssetEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                return new DataAsset(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(entityId), ArtifactState.PUBLISHED.toString());
     }
 
     public Boolean hasAccessToDataAsset(String dataAssetId, UserDetails userDetails) {
@@ -135,13 +162,13 @@ public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
 
     public List<DataAsset> getDataAssetsBySystemAndDomain(String systemId, String domainId, UserDetails userDetails) {
         return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".data_asset " +
-                "WHERE system_id is not null and system_id = ? and domain_id is not null and domain_id = ?",
+                "WHERE system_id = ? and domain_id = ? and state='PUBLISHED'",
                 new DataAssetRowMapper(), UUID.fromString(systemId), UUID.fromString(domainId));
     }
 
     public List<DataAsset> getDataAssetsBySystemAndEntity(String systemId, String entityId, UserDetails userDetails) {
         return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".data_asset " +
-                "WHERE system_id is not null and system_id = ? and entity_id is not null and entity_id = ?",
+                "WHERE system_id = ? and entity_id = ? and state='PUBLISHED'",
                 new DataAssetRowMapper(), UUID.fromString(systemId), UUID.fromString(entityId));
     }
 
@@ -151,10 +178,10 @@ public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
 
         Timestamp ts = new Timestamp(new java.util.Date().getTime());
         String query = "INSERT INTO da_" + userDetails.getTenant() + ".data_asset " +
-                "(id, \"name\", description, system_id, domain_id, entity_id, rows_count, data_size, state, workflow_task_id, created, creator, modified, modifier, roles) "
+                "(id, \"name\", description, short_description, system_id, domain_id, entity_id, rows_count, data_size, state, workflow_task_id, created, creator, modified, modifier, roles) "
                 +
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        jdbcTemplate.update(query, newId, nde.getName(), nde.getDescription(),
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        jdbcTemplate.update(query, newId, nde.getName(), nde.getDescription(), nde.getShortDescription(),
                 nde.getSystemId() != null ? UUID.fromString(nde.getSystemId()) : null,
                 nde.getDomainId() != null ? UUID.fromString(nde.getDomainId()) : null,
                 nde.getEntityId() != null ? UUID.fromString(nde.getEntityId()) : null,
@@ -165,46 +192,57 @@ public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
         return newId.toString();
     }
 
-    public void patchDataAsset(String dataAssetId, UpdatableDataAssetEntity dataAssetEntity, UserDetails userDetails)
-            throws LottabyteException {
+    public void patchDataAsset(String dataAssetId, UpdatableDataAssetEntity dataAssetEntity, boolean updateNulls,
+                               UserDetails userDetails) throws LottabyteException {
         List<String> sets = new ArrayList<>();
         List<Object> params = new ArrayList<>();
 
         String query = "UPDATE da_" + userDetails.getTenant() + ".data_asset SET modifier = ?, modified = ?";
         params.add(userDetails.getUid());
         params.add(new Timestamp(new java.util.Date().getTime()));
-        if (dataAssetEntity.getName() != null) {
+        if (updateNulls || dataAssetEntity.getName() != null) {
             sets.add("\"name\" = ?");
             params.add(dataAssetEntity.getName());
         }
-        if (dataAssetEntity.getDescription() != null) {
+        if (updateNulls || dataAssetEntity.getTechName() != null) {
+            sets.add("tech_name = ?");
+            params.add(dataAssetEntity.getTechName());
+        }
+        if (updateNulls || dataAssetEntity.getDescription() != null) {
             sets.add("description = ?");
             params.add(dataAssetEntity.getDescription());
         }
-        if (dataAssetEntity.getDomainId() != null) {
+        if (updateNulls || dataAssetEntity.getShortDescription() != null) {
+            sets.add("short_description = ?");
+            params.add(dataAssetEntity.getShortDescription());
+        }
+        if (updateNulls || dataAssetEntity.getDomainId() != null) {
             sets.add("domain_id = ?");
             params.add(
-                    !dataAssetEntity.getDomainId().isEmpty() ? UUID.fromString(dataAssetEntity.getDomainId()) : null);
+                    (dataAssetEntity.getDomainId() != null && !dataAssetEntity.getDomainId().isEmpty()) ?
+                            UUID.fromString(dataAssetEntity.getDomainId()) : null);
         }
-        if (dataAssetEntity.getSystemId() != null) {
+        if (updateNulls || dataAssetEntity.getSystemId() != null) {
             sets.add("system_id = ?");
             params.add(
-                    !dataAssetEntity.getSystemId().isEmpty() ? UUID.fromString(dataAssetEntity.getSystemId()) : null);
+                    (dataAssetEntity.getSystemId() != null && !dataAssetEntity.getSystemId().isEmpty()) ?
+                            UUID.fromString(dataAssetEntity.getSystemId()) : null);
         }
-        if (dataAssetEntity.getEntityId() != null) {
+        if (updateNulls || dataAssetEntity.getEntityId() != null) {
             sets.add("entity_id = ?");
             params.add(
-                    !dataAssetEntity.getEntityId().isEmpty() ? UUID.fromString(dataAssetEntity.getEntityId()) : null);
+                    (dataAssetEntity.getEntityId() != null && !dataAssetEntity.getEntityId().isEmpty()) ?
+                            UUID.fromString(dataAssetEntity.getEntityId()) : null);
         }
-        if (dataAssetEntity.getRoles() != null) {
+        if (updateNulls || dataAssetEntity.getRoles() != null) {
             sets.add("roles = ?");
             params.add(dataAssetEntity.getRoles());
         }
-        if (dataAssetEntity.getDataSize() != null) {
+        if (updateNulls || dataAssetEntity.getDataSize() != null) {
             sets.add("data_size = ?");
             params.add(dataAssetEntity.getDataSize());
         }
-        if (dataAssetEntity.getRowsCount() != null) {
+        if (updateNulls || dataAssetEntity.getRowsCount() != null) {
             sets.add("rows_count = ?");
             params.add(dataAssetEntity.getRowsCount());
         }
@@ -383,5 +421,42 @@ public class DataAssetRepository extends WorkflowableRepository<DataAsset> {
                 entitySampleDQRule.getEntity().getSendMail(), entitySampleDQRule.getEntity().getHistoryId(),
                 publishedId == null ? null : UUID.fromString(publishedId));
 
+    }
+
+    public List<ModeledObject<Entity>> getObjectsReferencingAsset(String assetId, UserDetails userDetails) {
+        List<ModeledObject<Entity>> res = new ArrayList<>();
+
+        jdbcTemplate.query("SELECT DISTINCT r.reference_type, r.source_id FROM da_" + userDetails.getTenant() + ".reference r WHERE"
+                        + " r.reference_type IN ('INDICATOR_TO_DATA_ASSET','PRODUCT_TO_DATA_ASSET') AND r.target_id=?",
+                new RowCallbackHandler() {
+                    @Override
+                    public void processRow(ResultSet rs) throws SQLException {
+                        String rt = rs.getString("reference_type");
+                        ArtifactType at = null;
+                        if (rt.equals("PRODUCT_TO_DATA_ASSET"))
+                             at = ArtifactType.product;
+                        else
+                            at = ArtifactType.indicator;
+                        String state = jdbcTemplate.queryForObject("SELECT state FROM da_" + userDetails.getTenant()
+                            + "." + at.name() + " WHERE id=?", String.class,
+                            UUID.fromString(rs.getString("source_id")));
+                        if (state != null && state.equals(ArtifactState.PUBLISHED.toString())) {
+                            Entity e = new Entity();
+                            e.setId(rs.getString("source_id"));
+                            e.setArtifactType(at);
+                            ModeledObject<Entity> obj = new ModeledObject<>(e);
+                            res.add(obj);
+                        }
+                    }
+                },
+                UUID.fromString(assetId)
+        );
+
+        for (int i = 0; i < res.size(); i++) {
+            res.get(i).getEntity().setName(jdbcTemplate.queryForObject("SELECT name FROM da_" + userDetails.getTenant()
+            + "." + res.get(i).getEntity().getArtifactType() + " WHERE id=?", String.class, UUID.fromString(res.get(i).getEntity().getId())));
+        }
+
+        return res;
     }
 }

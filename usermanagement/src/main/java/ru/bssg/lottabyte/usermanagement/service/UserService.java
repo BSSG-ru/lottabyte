@@ -28,14 +28,16 @@ public class UserService{
             new SearchColumn("description", SearchColumn.ColumnType.Text),
             new SearchColumn("display_name", SearchColumn.ColumnType.Text),
             new SearchColumn("user_roles", SearchColumn.ColumnType.Array),
-            new SearchColumn("user_roles.name", SearchColumn.ColumnType.Text)
+            new SearchColumn("user_role_names", SearchColumn.ColumnType.Text)
     };
     private final SearchColumn[] searchableColumnsForExternalGroup = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
             new SearchColumn("description", SearchColumn.ColumnType.Text),
             new SearchColumn("permissions", SearchColumn.ColumnType.Array),
             new SearchColumn("user_roles", SearchColumn.ColumnType.Array),
-            new SearchColumn("attributes", SearchColumn.ColumnType.Array)
+            new SearchColumn("attributes", SearchColumn.ColumnType.Array),
+            new SearchColumn("user_role_names", SearchColumn.ColumnType.Text),
+            new SearchColumn("permission_names", SearchColumn.ColumnType.Text)
     };
     private final SearchColumn[] searchableColumnsForPermission = {
             new SearchColumn("id", SearchColumn.ColumnType.UUID),
@@ -149,7 +151,7 @@ public class UserService{
     public UserDetails createUser(UpdatableUserDetails newUserDetails, UserDetails userDetails) throws LottabyteException {
         if (newUserDetails.getUsername() == null || newUserDetails.getUsername().isEmpty())
             throw new LottabyteException(Message.LBE00048, userDetails.getLanguage());
-        if (userRepository.existsUserByUsername(newUserDetails.getUsername(), userDetails))
+        if (userRepository.existsUserByUsername(newUserDetails.getUsername(), null, userDetails))
             throw new LottabyteException(Message.LBE00056, userDetails.getLanguage(), newUserDetails.getUsername());
         if (newUserDetails.getDisplayName() == null || newUserDetails.getDisplayName().isEmpty())
             throw new LottabyteException(Message.LBE00049, userDetails.getLanguage());
@@ -171,7 +173,7 @@ public class UserService{
             throw new LottabyteException(Message.LBE00058, userDetails.getLanguage(), userId);
         if (updatableUserDetails.getUsername() != null && updatableUserDetails.getUsername().isEmpty())
             throw new LottabyteException(Message.LBE00048, userDetails.getLanguage());
-        if (updatableUserDetails.getUsername() != null && userRepository.existsUserByUsername(updatableUserDetails.getUsername(), userDetails))
+        if (updatableUserDetails.getUsername() != null && userRepository.existsUserByUsername(updatableUserDetails.getUsername(), Integer.parseInt(userId), userDetails))
             throw new LottabyteException(Message.LBE00056, userDetails.getLanguage(), updatableUserDetails.getUsername());
         if (updatableUserDetails.getDisplayName() != null && updatableUserDetails.getDisplayName().isEmpty())
             throw new LottabyteException(Message.LBE00049, userDetails.getLanguage());
@@ -185,6 +187,17 @@ public class UserService{
             throw new LottabyteException(HttpStatus.BAD_REQUEST, Message.LBE00060);*/
         validateUserRolesAndPermissions(updatableUserDetails, userDetails);
         userRepository.updateUser(userId, updatableUserDetails, userDetails);
+
+        if (updatableUserDetails.getIsSteward()) {
+            if (current.getStewardId() == null || current.getStewardId().isEmpty())
+                userRepository.createStewardForUser(userId, updatableUserDetails, userDetails);
+            else
+                userRepository.updateStewardForUser(userId, updatableUserDetails, userDetails);
+        } else {
+            if (current.getStewardId() != null && !current.getStewardId().isEmpty())
+                userRepository.deleteSteward(current.getStewardId(), userDetails);
+        }
+
         return getUserById(userId, userDetails.getTenant());
     }
 

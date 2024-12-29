@@ -29,4 +29,5 @@ public class GojsModelNodeData {
     private Boolean isFk;
     private String[] domainNames;
     private String[] tagNames;
+    private String lineageDir;
 }

@@ -22,7 +22,7 @@ import java.util.*;
 @Slf4j
 public class TaskRunRepository extends GenericArtifactRepository<TaskRun> {
     private final JdbcTemplate jdbcTemplate;
-    private static String[] extFields = {"task_id", "result_sample_id", "result_sample_version_id", "result_msg", "stared_by", "start_mode", "task_start", "task_end", "task_state", "last_updated"};
+    private static String[] extFields = {"task_schedule_id", "result_sample_id", "result_sample_version_id", "result_msg", "stared_by", "start_mode", "task_start", "task_end", "task_state", "last_updated"};
 
     @Autowired
     public TaskRunRepository(JdbcTemplate jdbcTemplate) {
@@ -37,7 +37,7 @@ public class TaskRunRepository extends GenericArtifactRepository<TaskRun> {
             TaskRun taskRun = null;
 
             TaskRunEntity taskRunEntity = new TaskRunEntity();
-            taskRunEntity.setTaskId(rs.getString("task_id"));
+            taskRunEntity.setTaskScheduleId(rs.getString("task_schedule_id"));
             taskRunEntity.setResultSampleId(rs.getString("result_sample_id"));
             taskRunEntity.setResultSampleVersionId(rs.getInt("result_sample_version_id"));
             taskRunEntity.setResultMsg(rs.getString("result_msg"));
@@ -64,11 +64,11 @@ public class TaskRunRepository extends GenericArtifactRepository<TaskRun> {
         }
     }
 
-    public List<TaskRun> getTaskRunListByTaskId(String taskId, UserDetails userDetails) {
-        List<TaskRun> taskRunList = jdbcTemplate.query("SELECT id, task_id, result_sample_id, result_sample_version_id, result_msg, stared_by, start_mode, task_start, task_end, task_state, last_updated FROM da_" + userDetails.getTenant() + ".task_run " +
-                        "WHERE task_id=?" +
+    public List<TaskRun> getTaskRunListByTaskScheduleId(String taskScheduleId, UserDetails userDetails) {
+        List<TaskRun> taskRunList = jdbcTemplate.query("SELECT id, task_schedule_id, result_sample_id, result_sample_version_id, result_msg, stared_by, start_mode, task_start, task_end, task_state, last_updated FROM da_" + userDetails.getTenant() + ".task_run " +
+                        "WHERE task_schedule_id=?" +
                         "AND task_end is null",
-                new TaskRunRowMapper(), UUID.fromString(taskId));
+                new TaskRunRowMapper(), UUID.fromString(taskScheduleId));
 
         if (taskRunList.isEmpty())
             return Collections.emptyList();
@@ -79,9 +79,9 @@ public class TaskRunRepository extends GenericArtifactRepository<TaskRun> {
     public String createTaskRun(UpdatableTaskRunEntity updatableTaskRunEntity, UserDetails userDetails) {
         UUID uuidTaskRun = UUID.randomUUID();
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".task_run " +
-                        "(id, task_id, result_sample_id, result_sample_version_id, result_msg, stared_by, start_mode, task_start, task_state, last_updated) " +
+                        "(id, task_schedule_id, result_sample_id, result_sample_version_id, result_msg, stared_by, start_mode, task_start, task_state, last_updated) " +
                         "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-                uuidTaskRun, UUID.fromString(updatableTaskRunEntity.getTaskId()), updatableTaskRunEntity.getResultSampleId() != null ? UUID.fromString(updatableTaskRunEntity.getResultSampleId()) : null, updatableTaskRunEntity.getResultSampleVersionId(),
+                uuidTaskRun, UUID.fromString(updatableTaskRunEntity.getTaskScheduleId()), updatableTaskRunEntity.getResultSampleId() != null ? UUID.fromString(updatableTaskRunEntity.getResultSampleId()) : null, updatableTaskRunEntity.getResultSampleVersionId(),
                 updatableTaskRunEntity.getResultMsg(), updatableTaskRunEntity.getStaredBy(), updatableTaskRunEntity.getStartMode(), new Timestamp(new Date().getTime()), updatableTaskRunEntity.getTaskState(), new Timestamp(new Date().getTime()));
         return uuidTaskRun.toString();
     }
@@ -93,9 +93,9 @@ public class TaskRunRepository extends GenericArtifactRepository<TaskRun> {
         String query = "UPDATE da_" + userDetails.getTenant() + ".task_run SET last_updated = ?";
         params.add(new Timestamp(new java.util.Date().getTime()));
 
-        if (updatableTaskRunEntity.getTaskId() != null) {
-            sets.add("task_id = ?");
-            params.add(UUID.fromString(updatableTaskRunEntity.getTaskId()));
+        if (updatableTaskRunEntity.getTaskScheduleId() != null) {
+            sets.add("task_schedule_id = ?");
+            params.add(UUID.fromString(updatableTaskRunEntity.getTaskScheduleId()));
         }
         if (updatableTaskRunEntity.getResultSampleId() != null) {
             sets.add("result_sample_id = ?");

@@ -1,9 +1,18 @@
 package ru.bssg.lottabyte.coreapi.util;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.checkerframework.checker.units.qual.A;
+import ru.bssg.lottabyte.core.model.ArtifactState;
 import ru.bssg.lottabyte.core.model.ArtifactType;
+import ru.bssg.lottabyte.core.ui.model.SearchColumn;
+import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
+import ru.bssg.lottabyte.core.ui.model.SearchSQLParts;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
+import ru.bssg.lottabyte.core.util.ServiceUtils;
+
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public class QueryHelper {
@@ -56,6 +65,18 @@ public class QueryHelper {
             sb.append(getJoinQuery(ArtifactType.system, userDetails)).append(" and system.state='PUBLISHED' ");
             sb.append("))");
         }
+        if (artifactType == ArtifactType.dq_rule_task) {
+            sb.append("((dq_rule_tasks.system_id in (");
+            sb.append("select system.id from da_" + userDetails.getTenant() + ".system ");
+            sb.append(getJoinQuery(ArtifactType.system, userDetails)).append(" and system.state='PUBLISHED' ");
+            sb.append(")) or (dq_rule_tasks.product_id in (");
+            sb.append("select product.id from da_" + userDetails.getTenant() + ".product ");
+            sb.append(getJoinQuery(ArtifactType.product, userDetails)).append(" and product.state='PUBLISHED' ");
+            sb.append(")) or (dq_rule_tasks.indicator_id in (");
+            sb.append("select indicator.id from da_" + userDetails.getTenant() + ".indicator ");
+            sb.append(getJoinQuery(ArtifactType.indicator, userDetails)).append(" and indicator.state='PUBLISHED' ");
+            sb.append(")))");
+        }
         return sb.toString();
     }
 
@@ -105,4 +126,71 @@ public class QueryHelper {
         return sb.toString();
     }
 
+    public static SearchSQLParts getSearchSQLParts(SearchRequestWithJoin searchRequest, SearchColumn[] searchableColumns, String domainIdField, boolean filterByState, UserDetails userDetails) {
+        return getSearchSQLParts(searchRequest, searchableColumns, domainIdField, false, filterByState, userDetails);
+    }
+
+    public static SearchSQLParts getSearchSQLParts(SearchRequestWithJoin searchRequest, SearchColumn[] searchableColumns, String domainIdField, boolean includeNullDomains, boolean filterByState, UserDetails userDetails) {
+        SearchSQLParts searchSQLParts = new SearchSQLParts();
+
+        searchSQLParts.setOrderBy("name");
+        if (!StringUtils.isEmpty(searchRequest.getSort()))
+            searchSQLParts.setOrderBy(searchRequest.getSort().replaceAll("[\\-\\+]", "")
+                    + ((searchRequest.getSort().contains("-")) ? " DESC" : " ASC"));
+
+        Map<String, List<Object>> wheresMap = ServiceUtils.buildWhereForSearchRequestWithJoin(searchRequest,
+                searchableColumns);
+        String where = "";
+
+        for (String key : wheresMap.keySet()) {
+            where = key;
+            searchSQLParts.setWhereValues(wheresMap.get(key));
+        }
+        String join = "";
+        if (!searchRequest.getFiltersForJoin().isEmpty()) {
+            join = "left join da_" + userDetails.getTenant() + "." + searchRequest.getFiltersForJoin().get(0).getTable()
+                    + " "
+                    + "tbl2 on tbl1." + searchRequest.getFiltersForJoin().get(0).getOnColumn() + "=tbl2."
+                    + searchRequest.getFiltersForJoin().get(0).getEqualColumn() + " ";
+            if (where.isEmpty()) {
+                where = " WHERE tbl2." + searchRequest.getFiltersForJoin().get(0).getColumn() + " = "
+                        + searchRequest.getFiltersForJoin().get(0).getValue();
+            } else {
+                where = where + " AND tbl2." + searchRequest.getFiltersForJoin().get(0).getColumn() + " = "
+                        + searchRequest.getFiltersForJoin().get(0).getValue();
+            }
+        }
+
+        if (domainIdField != null && userDetails.getUserDomains() != null && !userDetails.getUserDomains().isEmpty()) {
+            if (where.isEmpty())
+                where = " WHERE ";
+            else
+                where += " AND ";
+            if (includeNullDomains)
+                where += "(" + domainIdField + " IS NULL OR " + domainIdField + " IN ('" + StringUtils.join(userDetails.getUserDomains(), "','") + "'))";
+            else
+                where += domainIdField + " IN ('" + StringUtils.join(userDetails.getUserDomains(), "','") + "')";
+        }
+
+        if (filterByState) {
+            if (where != null && !where.isEmpty()) {
+                if (searchRequest.getState() != null) {
+                    where += " and tbl1.STATE = '" + searchRequest.getState() + "' ";
+                } else {
+                    where += " and tbl1.STATE = '" + ArtifactState.PUBLISHED + "' ";
+                }
+            } else {
+                if (searchRequest.getState() != null) {
+                    where += " WHERE tbl1.STATE = '" + searchRequest.getState() + "' ";
+                } else {
+                    where += " WHERE tbl1.STATE = '" + ArtifactState.PUBLISHED + "' ";
+                }
+            }
+        }
+
+        searchSQLParts.setWhere(where);
+        searchSQLParts.setJoin(join);
+
+        return searchSQLParts;
+    }
 }

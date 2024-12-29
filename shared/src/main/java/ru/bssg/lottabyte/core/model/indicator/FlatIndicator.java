@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import ru.bssg.lottabyte.core.model.ArtifactState;
 import ru.bssg.lottabyte.core.model.FlatModeledObject;
+import ru.bssg.lottabyte.core.model.IFlatModeledObjectWithTags;
 import ru.bssg.lottabyte.core.model.system.System;
 
 import java.util.List;
@@ -14,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @ToString(callSuper=true)
 @EqualsAndHashCode(callSuper = true)
-public class FlatIndicator extends FlatModeledObject {
+public class FlatIndicator extends FlatModeledObject implements IFlatModeledObjectWithTags {
     private List<String> dataAssetIds;
     private String dataAssetName;
     private String formula;

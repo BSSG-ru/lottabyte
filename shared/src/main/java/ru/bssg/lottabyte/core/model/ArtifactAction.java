@@ -3,7 +3,9 @@ package ru.bssg.lottabyte.core.model;
 public enum ArtifactAction {
     CREATE,
     UPDATE,
-    REMOVE;
+    REMOVE,
+    ARCHIVE,
+    RESTORE;
 
     private ArtifactAction() {
 

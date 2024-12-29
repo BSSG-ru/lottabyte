@@ -19,13 +19,14 @@ import java.util.ArrayList;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class UpdatableBusinessEntityEntity extends BusinessEntityEntity {
-    @JsonIgnore
-    protected String description;
+
 
     public UpdatableBusinessEntityEntity(BusinessEntityEntity fromCopy) throws LottabyteException {
         this.setName(fromCopy.getName());
         this.setArtifactType(fromCopy.getArtifactType());
         this.setTechName(fromCopy.getTechName());
+        this.setDescription(fromCopy.getDescription());
+        this.setShortDescription(fromCopy.getShortDescription());
         this.setDefinition(fromCopy.getDefinition());
         this.setRegulation(fromCopy.getRegulation());
         if (fromCopy.getAltNames() != null) {

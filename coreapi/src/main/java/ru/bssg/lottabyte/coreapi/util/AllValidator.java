@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import ru.bssg.lottabyte.core.model.task.TaskEntity;
+import ru.bssg.lottabyte.core.model.task.TaskScheduleEntity;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -31,7 +32,7 @@ public class AllValidator {
         return isXml;
     }
 
-    public static boolean dateValidator(TaskEntity taskEntity) {
+    public static boolean dateValidator(TaskScheduleEntity taskEntity) {
         SimpleDateFormat sdf = null;
         try {
             final ObjectNode node = new ObjectMapper().readValue(taskEntity.getScheduleParams(), ObjectNode.class);

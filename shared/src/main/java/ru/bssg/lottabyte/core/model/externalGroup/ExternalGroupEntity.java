@@ -14,6 +14,8 @@ public class ExternalGroupEntity extends Entity {
     private List<String> userRoles;
     private String attributes;
     private String tenant;
+    private String userRoleNames;
+    private String permissionNames;
 
     public ExternalGroupEntity() {
         super(ArtifactType.external_groups);

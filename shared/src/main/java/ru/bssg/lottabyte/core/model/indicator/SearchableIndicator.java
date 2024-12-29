@@ -38,8 +38,8 @@ public class SearchableIndicator extends SearchableArtifact {
     protected String roles;
 
     @Builder
-    public SearchableIndicator(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String calcCode, String formula, List<String> dqChecks, List<SearchableReference> entityAttributes, String domainId, String domainName, String indicatorTypeId, String indicatorTypeName, String examples, String link, String dataTypeId, String dataTypeName, String limits, String limitsInternal, String roles) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableIndicator(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String calcCode, String formula, List<String> dqChecks, List<SearchableReference> entityAttributes, String domainId, String domainName, String indicatorTypeId, String indicatorTypeName, String examples, String link, String dataTypeId, String dataTypeName, String limits, String limitsInternal, String roles) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.calcCode = calcCode;
         this.formula = formula;
         this.dqChecks = dqChecks;

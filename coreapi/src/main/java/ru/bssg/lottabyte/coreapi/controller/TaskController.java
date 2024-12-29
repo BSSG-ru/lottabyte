@@ -255,18 +255,18 @@ public class TaskController {
             @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal Server error")
     })
-    @RequestMapping(value = "/run/{task_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @RequestMapping(value = "/schedules/run/{task_schedule_id}", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"task_r", "task_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<TaskRun> getSamplesProperties(
-            @PathVariable("task_id") String taskId,
+            @PathVariable("task_schedule_id") String taskScheduleId,
             @RequestHeader HttpHeaders headers
     ) throws LottabyteException {
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        TaskRun taskRun = entitySampleService.createTaskRunBeforeRequest(taskId, userDetails);
+        TaskRun taskRun = entitySampleService.createTaskRunBeforeRequest(taskScheduleId, userDetails);
 
-        entitySampleService.workWithConnectors(taskId, taskRun, userDetails);
+        entitySampleService.workWithConnectors(taskScheduleId, taskRun, userDetails);
 
         return new ResponseEntity<>(taskRun, HttpStatus.OK);
     }

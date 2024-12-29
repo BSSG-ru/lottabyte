@@ -77,6 +77,10 @@ public class ReferenceRepository extends GenericArtifactRepository<Reference> {
         return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".reference " +
                         "where source_id = ? AND target_artifact_type = ?", new ReferenceRowMapper(), UUID.fromString(id), type);
     }
+    public List<Reference> getAllReferenceBySourceIdAndRefType(String sourceId, ReferenceType referenceType, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".reference " +
+                "where source_id = ? AND reference_type = ?", new ReferenceRowMapper(), UUID.fromString(sourceId), referenceType.name());
+    }
     public List<Reference> getAllReferenceByPublishedIdAndTypeAndVersionId(String publishedId, Integer versionId, String type, UserDetails userDetails) {
         return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".reference " +
                 "where published_id = ? AND version_id = ? AND target_artifact_type = ? AND source_id != published_id", new ReferenceRowMapper(), UUID.fromString(publishedId), versionId, type);
@@ -156,6 +160,11 @@ public class ReferenceRepository extends GenericArtifactRepository<Reference> {
                 UUID.fromString(id));
     }
 
+    public void deleteReferenceBySourceIdAndRefType(String id, ReferenceType referenceType, UserDetails userDetails) {
+        jdbcTemplate.update("delete from da_" + userDetails.getTenant() + ".reference where source_id = ? and reference_type = ?",
+                UUID.fromString(id), referenceType.name());
+    }
+
     public void deleteAllByArtifactId(String artifactId, UserDetails userDetails) {
         jdbcTemplate.update("delete from da_" + userDetails.getTenant() + ".reference where source_id = ? or target_id = ?",
                 UUID.fromString(artifactId), UUID.fromString(artifactId));
@@ -164,5 +173,17 @@ public class ReferenceRepository extends GenericArtifactRepository<Reference> {
     public void deleteByReferenceSourceIdAndTargetId(String sourceId, String targetId, UserDetails userDetails) {
         jdbcTemplate.update("delete from da_" + userDetails.getTenant() + ".reference where source_id = ? AND target_id = ?",
                 UUID.fromString(sourceId), UUID.fromString(targetId));
+    }
+
+    public void deleteByReferenceSourceIdAndTargetIdAndRefType(String sourceId, String targetId, ReferenceType referenceType, UserDetails userDetails) {
+        jdbcTemplate.update("delete from da_" + userDetails.getTenant() + ".reference where source_id = ? AND target_id = ? AND reference_type = ?",
+                UUID.fromString(sourceId), UUID.fromString(targetId), referenceType.name());
+    }
+
+    public List<String> getReferencedArtifactTypes(String artifactType, UserDetails userDetails) {
+        return jdbcTemplate.queryForList("(SELECT DISTINCT source_artifact_type FROM da_" + userDetails.getTenant()
+                + ".reference WHERE target_artifact_type=?) UNION (SELECT DISTINCT target_artifact_type FROM da_"
+                + userDetails.getTenant() + ".reference WHERE source_artifact_type=?)", String.class, artifactType,
+                artifactType);
     }
 }

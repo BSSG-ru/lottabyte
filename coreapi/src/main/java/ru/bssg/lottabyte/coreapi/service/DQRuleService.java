@@ -17,6 +17,7 @@ import ru.bssg.lottabyte.core.model.dqRule.DQRule;
 import ru.bssg.lottabyte.core.model.dqRule.FlatDQRule;
 import ru.bssg.lottabyte.core.model.dqRule.SearchableDQRule;
 import ru.bssg.lottabyte.core.model.dqRule.UpdatableDQRuleEntity;
+import ru.bssg.lottabyte.core.model.entityQuery.EntityQuery;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
 import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
@@ -42,6 +43,8 @@ public class DQRuleService extends WorkflowableService<DQRule> {
     private final DQRuleRepository dqRuleRepository;
     private final TagService tagService;
     private final ElasticsearchService elasticsearchService;
+    private final ReferenceService referenceService;
+    private final UserFavService userFavService;
 
     private final WorkflowService workflowService;
     private final ArtifactType serviceArtifactType = ArtifactType.dq_rule;
@@ -49,6 +52,7 @@ public class DQRuleService extends WorkflowableService<DQRule> {
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
             new SearchColumn("description", SearchColumn.ColumnType.Text),
+            new SearchColumn("short_description", SearchColumn.ColumnType.Text),
             new SearchColumn("rule_ref", SearchColumn.ColumnType.Text),
             new SearchColumn("settings", SearchColumn.ColumnType.Text),
             new SearchColumn("modified", SearchColumn.ColumnType.Timestamp),
@@ -61,12 +65,15 @@ public class DQRuleService extends WorkflowableService<DQRule> {
 
     @Autowired
     public DQRuleService(DQRuleRepository dqRuleRepository, TagService tagService,
-            ElasticsearchService elasticsearchService, WorkflowService workflowService) {
-        super(dqRuleRepository, workflowService, tagService, ArtifactType.dq_rule, elasticsearchService);
+            ElasticsearchService elasticsearchService, WorkflowService workflowService,
+            ReferenceService referenceService, UserFavService userFavService) {
+        super(dqRuleRepository, workflowService, tagService, ArtifactType.dq_rule, elasticsearchService, referenceService);
         this.dqRuleRepository = dqRuleRepository;
         this.tagService = tagService;
         this.elasticsearchService = elasticsearchService;
         this.workflowService = workflowService;
+        this.referenceService = referenceService;
+        this.userFavService = userFavService;
     }
 
     public boolean existsInLog(String ruleId, UserDetails userDetails) throws LottabyteException {
@@ -117,6 +124,22 @@ public class DQRuleService extends WorkflowableService<DQRule> {
         dqRuleRepository.setStateById(current.getId(), ArtifactState.DRAFT_HISTORY, userDetails);
         dqRuleRepository.setStateById(publishedId, ArtifactState.REMOVED, userDetails);
         elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(publishedId), userDetails);
+    }
+
+    public DQRule wfSend(String draftId, UserDetails userDetails) throws LottabyteException {
+        DQRule draft = dqRuleRepository.getById(draftId, userDetails);
+        if (draft == null)
+            throw new LottabyteException(
+                    Message.LBE03004,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+        if (dqRuleRepository.dqRuleIdNameExists(draft.getEntity().getName(), null, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00108,
+                    userDetails.getLanguage(),
+                    draft.getEntity().getName());
+
+        return draft;
     }
 
     public DQRule wfPublish(String draftDQRuleId, UserDetails userDetails) throws LottabyteException {
@@ -274,7 +297,7 @@ public class DQRuleService extends WorkflowableService<DQRule> {
     }
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
-    public DQRule updateDQRule(String dqRuleId, UpdatableDQRuleEntity dqRuleEntity, UserDetails userDetails)
+    public DQRule updateDQRule(String dqRuleId, UpdatableDQRuleEntity dqRuleEntity, boolean updateNulls, UserDetails userDetails)
             throws LottabyteException {
 
         DQRule current = dqRuleRepository.getById(dqRuleId, userDetails);
@@ -307,7 +330,7 @@ public class DQRuleService extends WorkflowableService<DQRule> {
         } else {
             draftId = dqRuleId;
         }
-        dqRuleRepository.updateDQRule(draftId, dqRuleEntity, userDetails);
+        dqRuleRepository.updateDQRule(draftId, dqRuleEntity, updateNulls, userDetails);
         return dqRuleRepository.getById(draftId, userDetails);
 
     }
@@ -389,7 +412,7 @@ public class DQRuleService extends WorkflowableService<DQRule> {
                     if (task != null)
                         y.setWorkflowState(task.getEntity().getWorkflowState());
                 });
-
+        res.getItems().forEach(d -> d.setIsInFav(userFavService.isInFav(d.getId(), userDetails)));
         return res;
     }
 
@@ -400,6 +423,7 @@ public class DQRuleService extends WorkflowableService<DQRule> {
         sa.setVersionId(dqRule.getMetadata().getVersionId());
         sa.setName(dqRule.getMetadata().getName());
         sa.setDescription(dqRule.getEntity().getDescription());
+        sa.setShortDescription(dqRule.getEntity().getShortDescription());
         sa.setModifiedBy(dqRule.getMetadata().getModifiedBy());
         sa.setModifiedAt(dqRule.getMetadata().getModifiedAt());
         sa.setArtifactType(dqRule.getMetadata().getArtifactType());

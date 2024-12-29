@@ -39,11 +39,9 @@ public class TaskRepository {
             TaskEntity taskEntity = new TaskEntity();
             taskEntity.setName(rs.getString("name"));
             taskEntity.setDescription(rs.getString("description"));
-            taskEntity.setEnabled(rs.getBoolean("enabled"));
-            taskEntity.setScheduleType(TaskSchedulerType.valueOf(rs.getString("schedule_type")));
             taskEntity.setQueryId(rs.getString("query_id"));
             taskEntity.setSystemConnectionId(rs.getString("system_connection_id"));
-            taskEntity.setScheduleParams(rs.getString("schedule_params"));
+            taskEntity.setIsMetadataTask(rs.getBoolean("is_metadata_task"));
 
             Metadata md = new Metadata();
             md.setId(rs.getString("id"));
@@ -64,15 +62,5 @@ public class TaskRepository {
                 new TaskRowMapper());
     }
 
-    public void updateTaskEnabled(String taskId, UserDetails userDetails) {
-        List<Object> params = new ArrayList<>();
 
-        String query = "UPDATE da_" + userDetails.getTenant() + ".task SET enabled=false, modifier = ?, modified = ?";
-        params.add(userDetails.getUid());
-        params.add(new Timestamp(new java.util.Date().getTime()));
-
-        query += " WHERE id = ?";
-        params.add(UUID.fromString(taskId));
-        jdbcTemplate.update(query, params.toArray());
-    }
 }

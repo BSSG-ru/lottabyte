@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import ru.bssg.lottabyte.core.model.FlatModeledObject;
 import ru.bssg.lottabyte.core.model.FlatRelation;
+import ru.bssg.lottabyte.core.model.IFlatModeledObjectWithTags;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,10 +15,12 @@ import java.util.List;
 @NoArgsConstructor
 @ToString(callSuper=true)
 @EqualsAndHashCode(callSuper=false)
-public class FlatProduct extends FlatModeledObject {
+public class FlatProduct extends FlatModeledObject implements IFlatModeledObjectWithTags {
     private List<String> entityAttributeIds;
     private List<String> indicatorIds;
     private String domainId;
+    private String entityQueryId;
+    private List<String> productIds;
     private List<String> tags;
     private String domainName;
     private List<FlatRelation> productTypes;
@@ -30,5 +33,7 @@ public class FlatProduct extends FlatModeledObject {
         this.entityAttributeIds = product.getEntity().getEntityAttributeIds();
         this.indicatorIds = product.getEntity().getIndicatorIds();
         this.domainId = product.getEntity().getDomainId();
+        this.entityQueryId = product.getEntity().getEntityQueryId();
+        this.productIds = product.getEntity().getProductIds();
     }
 }

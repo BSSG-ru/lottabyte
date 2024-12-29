@@ -8,9 +8,15 @@ import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import ru.bssg.lottabyte.core.api.LottabyteException;
+import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.ArtifactType;
 import ru.bssg.lottabyte.core.model.Metadata;
 import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
+import ru.bssg.lottabyte.core.model.WorkflowableMetadata;
+import ru.bssg.lottabyte.core.model.product.FlatProduct;
+import ru.bssg.lottabyte.core.model.product.Product;
+import ru.bssg.lottabyte.core.model.product.ProductEntity;
+import ru.bssg.lottabyte.core.model.relation.Relation;
 import ru.bssg.lottabyte.core.model.tag.Tag;
 import ru.bssg.lottabyte.core.model.task.*;
 import ru.bssg.lottabyte.core.ui.model.SearchColumn;
@@ -33,7 +39,8 @@ import java.util.UUID;
 @Slf4j
 public class TaskRepository extends GenericArtifactRepository<Task> {
     private final JdbcTemplate jdbcTemplate;
-    private static String[] extFields = {"system_connection_id", "query_id", "enabled", "schedule_type", "schedule_params"};
+    private static String[] extFields = {"system_connection_id", "query_id"};
+
 
     @Autowired
     public TaskRepository(JdbcTemplate jdbcTemplate) {
@@ -50,11 +57,10 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
             TaskEntity taskEntity = new TaskEntity();
             taskEntity.setName(rs.getString("name"));
             taskEntity.setDescription(rs.getString("description"));
-            taskEntity.setEnabled(rs.getBoolean("enabled"));
-            taskEntity.setScheduleType(TaskSchedulerType.valueOf(rs.getString("schedule_type")));
+            taskEntity.setShortDescription(rs.getString("short_description"));
             taskEntity.setQueryId(rs.getString("query_id"));
             taskEntity.setSystemConnectionId(rs.getString("system_connection_id"));
-            taskEntity.setScheduleParams(rs.getString("schedule_params"));
+            taskEntity.setIsMetadataTask(rs.getBoolean("is_metadata_task"));
 
             Metadata md = new Metadata();
             md.setId(rs.getString("id"));
@@ -70,11 +76,46 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
         }
     }
 
+    public static class FlatTaskRowMapper implements RowMapper<FlatTask> {
+        @Override
+        public FlatTask mapRow(ResultSet rs, int rowNum) throws SQLException {
+            FlatTask flatTask = new FlatTask();
+            try {
+                TaskEntity taskEntity = new TaskEntity();
+                taskEntity.setId(rs.getString("id"));
+                taskEntity.setName(rs.getString("name"));
+                taskEntity.setDescription(rs.getString("description"));
+                taskEntity.setShortDescription(rs.getString("short_description"));
+                taskEntity.setIsMetadataTask(rs.getBoolean("is_metadata_task"));
+
+                flatTask = new FlatTask(
+                        new Task(taskEntity, new Metadata(rs, taskEntity.getArtifactType())));
+
+                return flatTask;
+            } catch (Exception e) {
+                return flatTask;
+            }
+        }
+    }
+
     public Boolean hasAccessToTask(String taskId, UserDetails userDetails) {
         return userDetails.getStewardId() == null ? true :
                 jdbcTemplate.queryForObject("SELECT EXISTS(SELECT task.ID FROM da_" + userDetails.getTenant() + ".task " +
                                 QueryHelper.getWhereIdInQuery(ArtifactType.task, userDetails) + " and task.id = ?) as exists", Boolean.class,
                         UUID.fromString(taskId));
+    }
+
+    public List<Task> getTasksBySystemConnectionId(String systemConnectionId, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() +
+                ".task WHERE system_connection_id = ?", new RowMapper<Task>() {
+            @Override
+            public Task mapRow(ResultSet rs, int rowNum) throws SQLException {
+                TaskEntity e = new TaskEntity();
+                e.setId(rs.getString("id"));
+                e.setName(rs.getString("name"));
+                return new Task(e, new Metadata(rs, e.getArtifactType()));
+            }
+        }, UUID.fromString(systemConnectionId));
     }
 
     public Boolean existsTaskWithSystemConnection(String systemConnectionId, UserDetails userDetails) {
@@ -93,10 +134,12 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
     }
 
     public Task getTaskByName(String name, UserDetails userDetails) {
-        List<Task> taskList = jdbcTemplate.query("SELECT id, \"name\", description, system_connection_id, query_id, enabled, schedule_type, schedule_params, created, creator, modified, modifier FROM da_" + userDetails.getTenant() + ".task WHERE name=?",
+        List<Task> taskList = jdbcTemplate.query("SELECT id, \"name\", description, short_description, system_connection_id, query_id, created, creator, modified, modifier FROM da_" + userDetails.getTenant() + ".task WHERE name=?",
                 new TaskRowMapper(), name);
 
-        return taskList.stream().findFirst().orElse(null);
+        Task t = taskList.stream().findFirst().orElse(null);
+
+        return t;
     }
 
     public String createTask(UpdatableTaskEntity newTaskEntity, UserDetails userDetails) {
@@ -104,9 +147,9 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
 
         LocalDateTime now = LocalDateTime.now();
 
-        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".task (id, \"name\", description, system_connection_id, query_id, enabled, schedule_type, schedule_params, created, creator, modified, modifier) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                id, newTaskEntity.getName(), newTaskEntity.getDescription(), UUID.fromString(newTaskEntity.getSystemConnectionId()), UUID.fromString(newTaskEntity.getQueryId()), newTaskEntity.getEnabled(), newTaskEntity.getScheduleType().toString(), newTaskEntity.getScheduleParams(),
-                now, userDetails.getUid(), now, userDetails.getUid());
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".task (id, \"name\", description, short_description, system_connection_id, query_id, created, creator, modified, modifier, is_metadata_task) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                id, newTaskEntity.getName(), newTaskEntity.getDescription(), newTaskEntity.getShortDescription(), UUID.fromString(newTaskEntity.getSystemConnectionId()), newTaskEntity.getQueryId() == null ? null : UUID.fromString(newTaskEntity.getQueryId()),
+                now, userDetails.getUid(), now, userDetails.getUid(), newTaskEntity.getIsMetadataTask());
 
         return id.toString();
     }
@@ -130,9 +173,9 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
             sets.add("description=?");
             args.add(taskEntity.getDescription());
         }
-        if (taskEntity.getEnabled() != null) {
-            sets.add("enabled=?");
-            args.add(taskEntity.getEnabled());
+        if (taskEntity.getShortDescription() != null) {
+            sets.add("short_description=?");
+            args.add(taskEntity.getShortDescription());
         }
         if (taskEntity.getSystemConnectionId() != null) {
             sets.add("system_connection_id=?");
@@ -142,13 +185,9 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
             sets.add("query_id=?");
             args.add(UUID.fromString(taskEntity.getQueryId()));
         }
-        if (taskEntity.getScheduleType() != null) {
-            sets.add("schedule_type=?");
-            args.add(taskEntity.getScheduleType().toString());
-        }
-        if (taskEntity.getScheduleParams() != null) {
-            sets.add("schedule_params=?");
-            args.add(taskEntity.getScheduleParams());
+        if (taskEntity.getIsMetadataTask() != null) {
+            sets.add("is_metadata_task=?");
+            args.add(taskEntity.getIsMetadataTask());
         }
         if (sets.size() > 0) {
             sets.add("modified=?");
@@ -170,10 +209,10 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
         TaskEntity taskEntity = new TaskEntity();
         taskEntity.setName(rs.getString("name"));
         taskEntity.setDescription(rs.getString("description"));
-        taskEntity.setScheduleType(TaskSchedulerType.valueOf(rs.getString("schedule_type")));
+        taskEntity.setShortDescription(rs.getString("short_description"));
         taskEntity.setQueryId(rs.getString("query_id"));
         taskEntity.setSystemConnectionId(rs.getString("system_connection_id"));
-        taskEntity.setScheduleParams(rs.getString("schedule_params"));
+        taskEntity.setIsMetadataTask(rs.getBoolean("is_metadata_task"));
 
         Metadata md = new Metadata();
         md.setId(rs.getString("id"));
@@ -258,6 +297,12 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
                         FlatTask flatTask = null;
                         try {
                             flatTask = flatTaskMap(rs);
+                            if (flatTask.getTaskState() != null) {
+                                Message m = null;
+                                try { m = Message.valueOf("TASK_STATUS_" + flatTask.getTaskState().toUpperCase()); } catch (Exception e) {}
+                                if (m != null)
+                                    flatTask.setTaskState(m.getText(ud.getLanguage().name()));
+                            }
                         } catch (LottabyteException e) {
                             log.error(e.getMessage());
                         }
@@ -288,5 +333,18 @@ public class TaskRepository extends GenericArtifactRepository<Task> {
         return jdbcTemplate.queryForList("SELECT domain_id FROM da_" + userDetails.getTenant() + ".system_to_domain s2d JOIN da_" + userDetails.getTenant()
                 + ".entity_query eq ON s2d.system_id=eq.system_id JOIN da_" + userDetails.getTenant() + ".task t ON eq.id=t.query_id WHERE t.id=?",
                 String.class, UUID.fromString(taskId));
+    }
+
+    public List<Relation> getTaskMetaDatabases(String id, UserDetails userDetails) {
+        return jdbcTemplate.query("SELECT md.id, md.name FROM da_" + userDetails.getTenant() + ".reference r JOIN da_" + userDetails.getTenant() +
+                        ".meta_database md ON r.source_id=md.id AND md.state='PUBLISHED' WHERE r.target_id=? AND r.reference_type='META_DATABASE_TO_TASK'",
+                new RowMapper<Relation>() {
+                    @Override
+                    public Relation mapRow(ResultSet rs, int rowNum) throws SQLException {
+                        return new Relation(rs.getString("id"), rs.getString("name"));
+                    }
+                },
+                UUID.fromString(id)
+        );
     }
 }

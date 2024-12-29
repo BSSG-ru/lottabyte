@@ -1,6 +1,7 @@
 package ru.bssg.lottabyte.coreapi.util;
 
 import org.apache.commons.lang3.StringUtils;
+import ru.bssg.lottabyte.core.usermanagement.model.Language;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,5 +37,19 @@ public class Helper {
 
     public static <T2> List<T2> getEmptyListIfNull(List<T2> list) {
         return (List)(list == null ? new ArrayList() : list);
+    }
+
+    public static String getBoolText(String val, Language lang) {
+        if (val == null || !val.trim().equals("1")) {
+            return lang.equals(Language.ru) ? "Нет" : "No";
+        } else
+            return lang.equals(Language.ru) ? "Да" : "Yes";
+    }
+
+    public static String getBoolText(Integer val, Language lang) {
+        if (val == null || !val.equals(1)) {
+            return lang.equals(Language.ru) ? "Нет" : "No";
+        } else
+            return lang.equals(Language.ru) ? "Да" : "Yes";
     }
 }

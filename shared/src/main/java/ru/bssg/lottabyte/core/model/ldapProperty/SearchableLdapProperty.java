@@ -27,8 +27,8 @@ public class SearchableLdapProperty extends SearchableArtifact {
     private Integer tenantId;
 
     @Builder
-    public SearchableLdapProperty(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String providerUrl, String principal, String credentials, String base_dn, String user_query, Integer tenantId) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableLdapProperty(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String providerUrl, String principal, String credentials, String base_dn, String user_query, Integer tenantId) {
+        super(id, versionId, name, description, "", tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.providerUrl = providerUrl;
         this.principal = principal;
         this.credentials = credentials;

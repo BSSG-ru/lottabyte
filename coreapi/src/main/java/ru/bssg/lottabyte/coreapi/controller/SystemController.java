@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.*;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.model.ArchiveResponse;
 import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
+import ru.bssg.lottabyte.core.model.domain.Domain;
+import ru.bssg.lottabyte.core.model.product.Product;
 import ru.bssg.lottabyte.core.model.system.*;
 import ru.bssg.lottabyte.core.model.system.System;
 import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
@@ -103,6 +105,27 @@ public class SystemController {
         return ResponseEntity.ok(systemService.getSystemVersionById(systemId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
+    @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Restores System version by given guid and version id.", description = "This method can be used to restore System history version by given guid and version id.", operationId = "restoreSystemVersionById")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Operation successfully"),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "System version not found"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/{system_id}/versions/{version_id}/restore", method = RequestMethod.POST, produces = {
+            "application/json" })
+    @Secured(roles = { "system_u" }, level = ANY_ROLE)
+    public ResponseEntity<System> restoreSystemVersionById(
+            @Parameter(description = "ID of the System", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("system_id") String systemId,
+            @Parameter(description = "Version ID of the System", example = "1") @PathVariable("version_id") Integer versionId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+        return ResponseEntity.ok(systemService.restoreSystemVersionById(systemId, versionId,
+                jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+    }
+
+
     @Operation(
             security = @SecurityRequirement(name = "bearerAuth"),
             summary = "Gets System versions list by domain guid.",
@@ -121,7 +144,7 @@ public class SystemController {
     public ResponseEntity<PaginatedArtifactList<System>> getSystemVersionsById(
             @PathVariable("system_id") String systemId,
             @Parameter(description = "The maximum number of Systems to return - must be at least 1 and cannot exceed 200. The default value is 10.")
-            @RequestParam(value="limit", defaultValue = "10") Integer limit,
+            @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
@@ -426,5 +449,61 @@ public class SystemController {
     public ResponseEntity<List<SystemType>> getSystemTypes(
             @RequestHeader HttpHeaders headers) throws LottabyteException {
         return new ResponseEntity<>(systemService.getSystemTypes(jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Archives System by given guid.",
+            description = "This method can be used to archive System by given guid.",
+            operationId = "archiveSystem"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "System has been archived successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/archive/{system_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"system_r", "system_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<?> archiveSystem(
+            @Parameter(description = "ID of the System",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("system_id") String systemId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        System result = systemService.archiveSystemById(systemId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        if (result == null) {
+            ArchiveResponse resp = new ArchiveResponse();
+            resp.setDeletedGuids(Collections.singletonList(systemId));
+            return ResponseEntity.ok(resp);
+        } else {
+            return ResponseEntity.ok(result);
+        }
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Restores System by given guid.",
+            description = "This method can be used to restore System by given guid.",
+            operationId = "restoreSystem"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "System has been restored successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/restore/{system_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"system_r", "system_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<System> restoreSystem(
+            @Parameter(description = "ID of the System",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("system_id") String systemId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        System result = systemService.restoreSystemById(systemId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        return new ResponseEntity<>(result, HttpStatus.OK);
     }
 }

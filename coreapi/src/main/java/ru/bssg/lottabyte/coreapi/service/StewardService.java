@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
+import ru.bssg.lottabyte.core.model.ArtifactState;
 import ru.bssg.lottabyte.core.model.HttpStatus;
 import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
 import ru.bssg.lottabyte.core.model.steward.FlatSteward;
@@ -121,6 +122,7 @@ public class StewardService {
             .modifiedBy(steward.getMetadata().getModifiedBy())
             .modifiedAt(steward.getMetadata().getModifiedAt())
             .artifactType(steward.getMetadata().getArtifactType())
+            .artifactState(ArtifactState.PUBLISHED.name())
             .effectiveStartDate(steward.getMetadata().getEffectiveStartDate())
             .effectiveEndDate(steward.getMetadata().getEffectiveEndDate())
             .tags(Helper.getEmptyListIfNull(steward.getMetadata().getTags()).stream()

@@ -24,6 +24,7 @@ public class DataAssetEntity extends Entity {
     private List<CustomAttribute> customAttributes;
     private List<EntitySampleDQRule> dqRules;
     private String roles;
+    private String techName;
 
     public DataAssetEntity() {
         super(ArtifactType.data_asset);

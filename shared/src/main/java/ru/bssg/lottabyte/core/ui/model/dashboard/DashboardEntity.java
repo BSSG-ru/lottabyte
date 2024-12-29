@@ -10,6 +10,10 @@ import lombok.NoArgsConstructor;
 public class DashboardEntity {
     private String id;
     private String name;
+    private String description;
+    private Integer rating;
     private Integer weight;
     private String artifactType;
+    private String createdBy;
+    private Boolean isInFav;
 }

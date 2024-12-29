@@ -2,6 +2,7 @@ package ru.bssg.lottabyte.coreapi.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,6 +15,7 @@ import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
 import ru.bssg.lottabyte.core.model.connector.ConnectorParam;
 import ru.bssg.lottabyte.core.model.dataasset.DataAsset;
 import ru.bssg.lottabyte.core.model.system.*;
+import ru.bssg.lottabyte.core.model.task.Task;
 import ru.bssg.lottabyte.core.ui.model.SearchColumn;
 import ru.bssg.lottabyte.core.ui.model.SearchColumnForJoin;
 import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
@@ -25,6 +27,7 @@ import ru.bssg.lottabyte.coreapi.repository.TaskRepository;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -38,8 +41,8 @@ public class SystemConnectionService {
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
             new SearchColumn("description", SearchColumn.ColumnType.Text),
-            new SearchColumn("connector.name", SearchColumn.ColumnType.Text),
-            new SearchColumn("system.name", SearchColumn.ColumnType.Text),
+            new SearchColumn("connector_name", SearchColumn.ColumnType.Text),
+            new SearchColumn("system_name", SearchColumn.ColumnType.Text),
             new SearchColumn("system_id", SearchColumn.ColumnType.UUID),
             new SearchColumn("connector_id", SearchColumn.ColumnType.UUID),
             new SearchColumn("modified", SearchColumn.ColumnType.Timestamp)
@@ -59,11 +62,11 @@ public class SystemConnectionService {
     }
 
     public SystemConnection createSystemConnection(UpdatableSystemConnectionEntity newSystemConnectionEntity, UserDetails userDetails) throws LottabyteException {
-        if (newSystemConnectionEntity.getSystemId() == null)
-            throw new LottabyteException(Message.LBE00922, userDetails.getLanguage());
-        if (systemService.getSystemById(newSystemConnectionEntity.getSystemId(), userDetails) == null)
-            throw new LottabyteException(Message.LBE00904, userDetails.getLanguage(), newSystemConnectionEntity.getSystemId());
-        if (userDetails.getStewardId() != null && !systemService.hasAccessToSystem(newSystemConnectionEntity.getSystemId(), userDetails))
+        //if (newSystemConnectionEntity.getSystemId() == null)
+          //  throw new LottabyteException(Message.LBE00922, userDetails.getLanguage());
+        //if (systemService.getSystemById(newSystemConnectionEntity.getSystemId(), userDetails) == null)
+         //   throw new LottabyteException(Message.LBE00904, userDetails.getLanguage(), newSystemConnectionEntity.getSystemId());
+        if (userDetails.getStewardId() != null && newSystemConnectionEntity.getSystemId() != null && !systemService.hasAccessToSystem(newSystemConnectionEntity.getSystemId(), userDetails))
             throw new LottabyteException(Message.LBE00921, userDetails.getLanguage(), newSystemConnectionEntity.getSystemId());
         if (newSystemConnectionEntity.getConnectorId() == null || connectorService.getConnectorById(newSystemConnectionEntity.getConnectorId(), userDetails) == null)
             throw new LottabyteException(Message.LBE01101, userDetails.getLanguage(), newSystemConnectionEntity.getConnectorId());
@@ -123,8 +126,11 @@ public class SystemConnectionService {
             throw new LottabyteException(Message.LBE01201, userDetails.getLanguage(), systemConnectionId);
         if (userDetails.getStewardId() != null && !systemConnectionRepository.hasAccessToSystemConnection(systemConnectionId, userDetails))
             throw new LottabyteException(Message.LBE01208, userDetails.getLanguage(), systemConnectionId);
-        if (taskRepository.existsTaskWithSystemConnection(systemConnectionId, userDetails))
-            throw new LottabyteException(Message.LBE01206, userDetails.getLanguage());
+        List<Task> relatedTasks = taskRepository.getTasksBySystemConnectionId(systemConnectionId, userDetails);
+        if (!relatedTasks.isEmpty()) {
+            List<String> links = relatedTasks.stream().map(r -> "link|" + r.getArtifactType() + "|" + r.getName() + "|" + r.getId()).collect(Collectors.toList());
+            throw new LottabyteException(Message.LBE01206, userDetails.getLanguage(), StringUtils.join(links, ", "));
+        }
 
         deleteSystemConnectionParamBySystemConnectionId(systemConnectionId, userDetails);
         systemConnectionRepository.deleteById(systemConnectionId, userDetails);

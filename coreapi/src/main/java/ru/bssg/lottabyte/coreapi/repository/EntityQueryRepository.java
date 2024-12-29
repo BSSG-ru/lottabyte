@@ -30,6 +30,8 @@ import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class EntityQueryRepository extends WorkflowableRepository<EntityQuery> {
@@ -56,7 +58,7 @@ public class EntityQueryRepository extends WorkflowableRepository<EntityQuery> {
         }
     }
 
-    private static class FlatEntityQueryRowMapper extends FlatItemRowMapper<FlatEntityQuery> {
+    public static class FlatEntityQueryRowMapper extends FlatItemRowMapper<FlatEntityQuery> {
 
         public FlatEntityQueryRowMapper() { super(FlatEntityQuery::new); }
 
@@ -121,32 +123,32 @@ public class EntityQueryRepository extends WorkflowableRepository<EntityQuery> {
         return uuidForEntityQuery.toString();
     }
 
-    public void patchQuery(String entityQueryId, UpdatableEntityQueryEntity newEntityQueryEntity, UserDetails userDetails) {
+    public void patchQuery(String entityQueryId, UpdatableEntityQueryEntity newEntityQueryEntity, boolean updateNulls, UserDetails userDetails) {
         List<String> sets = new ArrayList<>();
         List<Object> params = new ArrayList<>();
 
         String query = "UPDATE da_" + userDetails.getTenant() + ".\"entity_query\" SET modifier = ?, modified = ?";
         params.add(userDetails.getUid());
         params.add(new Timestamp(new java.util.Date().getTime()));
-        if(newEntityQueryEntity.getName() != null) {
+        if(updateNulls || newEntityQueryEntity.getName() != null) {
             sets.add("\"name\" = ?");
             params.add(newEntityQueryEntity.getName());
         }
-        if(newEntityQueryEntity.getDescription() != null) {
+        if(updateNulls || newEntityQueryEntity.getDescription() != null) {
             sets.add("description = ?");
             params.add(newEntityQueryEntity.getDescription());
         }
-        if(newEntityQueryEntity.getQueryText() != null) {
+        if(updateNulls || newEntityQueryEntity.getQueryText() != null) {
             sets.add("query_text = ?");
             params.add(newEntityQueryEntity.getQueryText());
         }
-        if(newEntityQueryEntity.getEntityId() != null) {
+        if(updateNulls || newEntityQueryEntity.getEntityId() != null) {
             sets.add("entity_id = ?");
-            params.add(UUID.fromString(newEntityQueryEntity.getEntityId()));
+            params.add((newEntityQueryEntity.getEntityId() == null || newEntityQueryEntity.getEntityId().isEmpty() )? null : UUID.fromString(newEntityQueryEntity.getEntityId()));
         }
-        if(newEntityQueryEntity.getSystemId() != null) {
+        if(updateNulls || newEntityQueryEntity.getSystemId() != null) {
             sets.add("system_id = ?");
-            params.add(UUID.fromString(newEntityQueryEntity.getSystemId()));
+            params.add((newEntityQueryEntity.getSystemId() == null || newEntityQueryEntity.getSystemId().isEmpty())? null : UUID.fromString(newEntityQueryEntity.getSystemId()));
         }
         if (!sets.isEmpty()) {
             query += ", " + String.join(",", sets);

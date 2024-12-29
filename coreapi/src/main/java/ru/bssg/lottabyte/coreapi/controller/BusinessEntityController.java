@@ -22,6 +22,8 @@ import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
 import ru.bssg.lottabyte.core.model.businessEntity.*;
 import ru.bssg.lottabyte.core.model.datatype.DataType;
 import ru.bssg.lottabyte.core.model.datatype.FlatDataType;
+import ru.bssg.lottabyte.core.model.domain.Domain;
+import ru.bssg.lottabyte.core.model.indicator.Indicator;
 import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
 import ru.bssg.lottabyte.core.ui.model.SearchResponse;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
@@ -76,8 +78,6 @@ public class BusinessEntityController {
 
         return new ResponseEntity<>(businessEntityService.getBusinessEntityById(businessEntityId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
-
-
 
     @Operation(
             security = @SecurityRequirement(name = "bearerAuth"),
@@ -152,7 +152,7 @@ public class BusinessEntityController {
             @RequestBody UpdatableBusinessEntityEntity businessEntityEntity,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
 
-        return new ResponseEntity<>(businessEntityService.patchBusinessEntity(businessEntityId, businessEntityEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+        return new ResponseEntity<>(businessEntityService.patchBusinessEntity(businessEntityId, businessEntityEntity, false, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
     @Operation(
@@ -224,7 +224,7 @@ public class BusinessEntityController {
     public ResponseEntity<PaginatedArtifactList<BusinessEntity>> getBusinessEntityVersionsById(
             @PathVariable("business_entity_id") String businessEntityId,
             @Parameter(description = "The maximum number of Business Entity versions to return - must be at least 1 and cannot exceed 200. The default value is 10.")
-            @RequestParam(value="limit", defaultValue = "10") Integer limit,
+            @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
@@ -258,4 +258,79 @@ public class BusinessEntityController {
         return ResponseEntity.ok(businessEntityService.getBusinessEntityVersionById(businessEntityId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
+    @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Restores BE version by given guid and version id.", description = "This method can be used to restore BE history version by given guid and version id.", operationId = "restoreBusinessEntityVersionById")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Operation successfully"),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "BE version not found"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/{be_id}/versions/{version_id}/restore", method = RequestMethod.POST, produces = {
+            "application/json" })
+    @Secured(roles = { "business_entity_u" }, level = ANY_ROLE)
+    public ResponseEntity<BusinessEntity> restoreBusinessEntityVersionById(
+            @Parameter(description = "ID of the BE", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("be_id") String beId,
+            @Parameter(description = "Version ID of the BE", example = "1") @PathVariable("version_id") Integer versionId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+        return ResponseEntity.ok(businessEntityService.restoreBusinessEntityVersionById(beId, versionId,
+                jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Archives BE by given guid.",
+            description = "This method can be used to archive BE by given guid.",
+            operationId = "archiveBusinessEntity"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "BE has been archived successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/archive/{be_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"business_entity_r", "business_entity_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<?> archiveBusinessEntity(
+            @Parameter(description = "ID of the BE",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("be_id") String beId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        BusinessEntity result = businessEntityService.archiveBusinessEntityById(beId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        if (result == null) {
+            ArchiveResponse resp = new ArchiveResponse();
+            resp.setDeletedGuids(Collections.singletonList(beId));
+            return ResponseEntity.ok(resp);
+        } else {
+            return ResponseEntity.ok(result);
+        }
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Restores BE by given guid.",
+            description = "This method can be used to restore BE by given guid.",
+            operationId = "restoreBusinessEntity"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "BE has been restored successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/restore/{be_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"business_entity_r", "business_entity_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<BusinessEntity> restoreBusinessEntity(
+            @Parameter(description = "ID of the BE",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("be_id") String beId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        BusinessEntity result = businessEntityService.restoreBusinessEntityById(beId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        return new ResponseEntity<>(result, HttpStatus.OK);
+    }
 }

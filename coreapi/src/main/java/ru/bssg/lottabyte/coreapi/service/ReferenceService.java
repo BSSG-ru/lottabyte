@@ -45,6 +45,9 @@ public class ReferenceService {
     public List<Reference> getAllReferenceBySourceIdAndTargetType(String artifactId, String type, UserDetails userDetails) {
         return referenceRepository.getAllReferenceBySourceIdAndTargetType(artifactId, type, userDetails);
     }
+    public List<Reference> getAllReferenceBySourceIdAndRefType(String sourceId, ReferenceType referenceType, UserDetails userDetails) {
+        return referenceRepository.getAllReferenceBySourceIdAndRefType(sourceId, referenceType, userDetails);
+    }
     public List<Reference> getAllReferenceByPublishedIdAndTypeAndVersionId(String publishedId, Integer versionId, String type, UserDetails userDetails) {
         return referenceRepository.getAllReferenceByPublishedIdAndTypeAndVersionId(publishedId, versionId, type, userDetails);
     }
@@ -104,6 +107,10 @@ public class ReferenceService {
             referenceRepository.deleteReferenceBySourceId(id, userDetails);
     }
 
+    public void deleteReferenceBySourceIdAndRefType(String id, ReferenceType referenceType, UserDetails userDetails) {
+        referenceRepository.deleteReferenceBySourceIdAndRefType(id, referenceType, userDetails);
+    }
+
     public void deleteAllByArtifactId(String artifactId, UserDetails userDetails) {
         referenceRepository.deleteAllByArtifactId(artifactId, userDetails);
     }
@@ -112,5 +119,11 @@ public class ReferenceService {
     }
     public void deleteByReferenceSourceIdAndTargetId(String sourceId, String targetId, UserDetails userDetails) {
         referenceRepository.deleteByReferenceSourceIdAndTargetId(sourceId, targetId, userDetails);
+    }
+    public void deleteByReferenceSourceIdAndTargetIdAndRefType(String sourceId, String targetId, ReferenceType referenceType, UserDetails userDetails) {
+        referenceRepository.deleteByReferenceSourceIdAndTargetIdAndRefType(sourceId, targetId, referenceType, userDetails);
+    }
+    public List<String> getReferencedArtifactTypes(String artifactType, UserDetails userDetails) {
+        return referenceRepository.getReferencedArtifactTypes(artifactType, userDetails);
     }
 }

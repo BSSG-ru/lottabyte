@@ -16,20 +16,23 @@ public class FlatModeledObject {
     protected Integer num;
     protected String name;
     protected String description;
+    protected String shortDescription;
     protected Integer versionId;
     protected LocalDateTime modified;
     protected Boolean hasAccess;
-
+    protected Boolean isInFav;
 
 
     public FlatModeledObject(FlatModeledObject f) {
         this.id = f.getId();
         this.name = f.getName();
         this.description = f.getDescription();
+        this.shortDescription = f.getShortDescription();
         this.modified = f.getModified();
         this.versionId = f.getVersionId();
-        this.num = f.num;
-        this.hasAccess = f.hasAccess;
+        this.num = f.getNum();
+        this.hasAccess = f.getHasAccess();
+        this.isInFav = f.getIsInFav();
     }
 
 }

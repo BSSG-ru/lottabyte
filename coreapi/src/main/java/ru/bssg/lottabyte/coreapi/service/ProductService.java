@@ -14,7 +14,9 @@ import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.businessEntity.BusinessEntity;
+import ru.bssg.lottabyte.core.model.dataasset.DataAsset;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
+import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
 import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.product.*;
@@ -40,22 +42,22 @@ import java.util.stream.Collectors;
 public class ProductService extends WorkflowableService<Product> {
     private final ProductRepository productRepository;
     private final ReferenceService referenceService;
-    private final SystemService systemService;
     private final DataAssetService dataAssetService;
     private final IndicatorService indicatorService;
     private final EntityService entityService;
     private final TagService tagService;
     private final WorkflowService workflowService;
     private final ArtifactType serviceArtifactType = ArtifactType.product;
-    private final DomainService domainService;
     private final ElasticsearchService elasticsearchService;
     private final EntitySampleRepository entitySampleRepository;
-    private final ArtifactService artifactService;
     private final DQRuleService dqRuleService;
+    private final UserFavService userFavService;
 
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
+            new SearchColumn("id", SearchColumn.ColumnType.UUID),
             new SearchColumn("description", SearchColumn.ColumnType.Text),
+            new SearchColumn("short_description", SearchColumn.ColumnType.Text),
             new SearchColumn("modified", SearchColumn.ColumnType.Timestamp),
             new SearchColumn("version_id", SearchColumn.ColumnType.Number),
             new SearchColumn("state", SearchColumn.ColumnType.Text),
@@ -65,6 +67,8 @@ public class ProductService extends WorkflowableService<Product> {
             new SearchColumn("indicator.id", SearchColumn.ColumnType.UUID),
             new SearchColumn("domain.name", SearchColumn.ColumnType.Text),
             new SearchColumn("domain_id", SearchColumn.ColumnType.UUID),
+            new SearchColumn("entity_query.name", SearchColumn.ColumnType.Text),
+            new SearchColumn("entity_query_id", SearchColumn.ColumnType.UUID),
             new SearchColumn("product_types", SearchColumn.ColumnType.Text),
             new SearchColumn("entity_attribute.name", SearchColumn.ColumnType.Text),
             new SearchColumn("workflow_state", SearchColumn.ColumnType.Text),
@@ -89,31 +93,38 @@ public class ProductService extends WorkflowableService<Product> {
     @Autowired
     @Lazy
     public ProductService(ProductRepository productRepository,
-            EntitySampleRepository entitySampleRepository,
-            ReferenceService referenceService,
-            ElasticsearchService elasticsearchService,
-            SystemService systemService,
-            DataAssetService dataAssetService,
-            IndicatorService indicatorService,
-            EntityService entityService, TagService tagService,
-            DomainService domainService,
-            WorkflowService workflowService,
-            ArtifactService artifactService,
-            DQRuleService dqRuleService) {
-        super(productRepository, workflowService, tagService, ArtifactType.product, elasticsearchService);
+                          EntitySampleRepository entitySampleRepository,
+                          ReferenceService referenceService,
+                          ElasticsearchService elasticsearchService,
+                          SystemService systemService,
+                          DataAssetService dataAssetService,
+                          IndicatorService indicatorService,
+                          EntityService entityService, TagService tagService,
+                          DomainService domainService,
+                          WorkflowService workflowService,
+                          ArtifactService artifactService,
+                          DQRuleService dqRuleService,
+                          EntityQueryService entityQueryService,
+                          UserFavService userFavService) {
+        super(productRepository, workflowService, tagService, ArtifactType.product, elasticsearchService, referenceService);
         this.productRepository = productRepository;
         this.referenceService = referenceService;
-        this.systemService = systemService;
         this.dataAssetService = dataAssetService;
         this.indicatorService = indicatorService;
         this.entityService = entityService;
         this.tagService = tagService;
-        this.domainService = domainService;
         this.workflowService = workflowService;
         this.elasticsearchService = elasticsearchService;
         this.entitySampleRepository = entitySampleRepository;
-        this.artifactService = artifactService;
         this.dqRuleService = dqRuleService;
+        this.userFavService = userFavService;
+    }
+
+    public Product wfSend(String draftId, UserDetails userDetails) throws LottabyteException {
+        Product draft = productRepository.getById(draftId, userDetails);
+
+
+        return draft;
     }
 
     public Product wfPublish(String draftEntityId, UserDetails userDetails) throws LottabyteException {
@@ -131,7 +142,7 @@ public class ProductService extends WorkflowableService<Product> {
             }
 
             if (draft.getEntity().getDqRules() != null && !draft.getEntity().getDqRules().isEmpty())
-                mergeDQRules(draft.getId(), newPublishedId, draft.getEntity().getDqRules(), null, userDetails);
+                mergeDQRules(newPublishedId, newPublishedId, draft.getEntity().getDqRules(), null, userDetails);
 
             tagService.mergeTags(draftEntityId, serviceArtifactType, newPublishedId, serviceArtifactType, userDetails);
             Product product = getProductById(newPublishedId, userDetails);
@@ -161,7 +172,7 @@ public class ProductService extends WorkflowableService<Product> {
                 createProductReference(new UpdatableProductEntity(draft.getEntity()), publishedId, publishedId,
                         userDetails);
 
-                mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
+                mergeDQRules(publishedId, publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
             }
 
             if (draft.getEntity().getTermLinkIds() != null && !draft.getEntity().getTermLinkIds().isEmpty()) {
@@ -181,13 +192,13 @@ public class ProductService extends WorkflowableService<Product> {
         if (product == null)
             throw new LottabyteException(
                     Message.LBE03004,
-                            userDetails.getLanguage(),
+                    userDetails.getLanguage(),
                     serviceArtifactType, draftSystemId);
         String publishedId = ((WorkflowableMetadata) product.getMetadata()).getPublishedId();
         if (publishedId == null)
             throw new LottabyteException(
                     Message.LBE03006,
-                            userDetails.getLanguage(),
+                    userDetails.getLanguage(),
                     serviceArtifactType, draftSystemId);
         productRepository.setStateById(product.getId(), ArtifactState.DRAFT_HISTORY, userDetails);
         productRepository.setStateById(publishedId, ArtifactState.REMOVED, userDetails);
@@ -195,14 +206,16 @@ public class ProductService extends WorkflowableService<Product> {
         elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(publishedId), userDetails);
     }
 
+
+
     public Product getProductById(String productId, UserDetails userDetails) throws LottabyteException {
         Product product = productRepository.getById(productId, userDetails);
         if (product == null)
             throw new LottabyteException(Message.LBE03101,
-                            userDetails.getLanguage(), productId);
+                    userDetails.getLanguage(), productId);
 
         List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByProduct(productId, userDetails);
-        if (((WorkflowableMetadata)product.getMetadata()).getState().equals(ArtifactState.PUBLISHED)) {
+        if (((WorkflowableMetadata) product.getMetadata()).getState().equals(ArtifactState.PUBLISHED)) {
             for (EntitySampleDQRule r : dqRules) {
                 r.getEntity().setAncestorId(r.getId());
             }
@@ -220,6 +233,12 @@ public class ProductService extends WorkflowableService<Product> {
         List<String> indicatorIdList = referenceForIndicator.stream().map(r -> r.getEntity().getTargetId())
                 .collect(Collectors.toList());
         product.getEntity().setIndicatorIds(indicatorIdList);
+
+        List<Reference> referenceForProduct = referenceService.getAllReferenceBySourceIdAndTargetType(productId,
+                String.valueOf(ArtifactType.product), userDetails);
+        List<String> productIdList = referenceForProduct.stream().map(r -> r.getEntity().getTargetId())
+                .collect(Collectors.toList());
+        product.getEntity().setProductIds(productIdList);
 
         List<Reference> referenceForPType = referenceService.getAllReferenceBySourceIdAndTargetType(productId,
                 String.valueOf(ArtifactType.product_type), userDetails);
@@ -253,7 +272,7 @@ public class ProductService extends WorkflowableService<Product> {
         ProductType productType = productRepository.getProductTypeById(productTypeId, userDetails);
         if (productType == null)
             throw new LottabyteException(Message.LBE03101,
-                            userDetails.getLanguage(), productTypeId);
+                    userDetails.getLanguage(), productTypeId);
 
         return productType;
     }
@@ -264,17 +283,17 @@ public class ProductService extends WorkflowableService<Product> {
                 .getProductSupplyVariantById(productSupplyVariantId, userDetails);
         if (productSupplyVariant == null)
             throw new LottabyteException(Message.LBE03101,
-                            userDetails.getLanguage(), productSupplyVariantId);
+                    userDetails.getLanguage(), productSupplyVariantId);
 
         return productSupplyVariant;
     }
 
     public PaginatedArtifactList<Product> getAllProductsPaginated(Integer offset, Integer limit, String artifactState,
-            UserDetails userDetails) throws LottabyteException {
+                                                                  UserDetails userDetails) throws LottabyteException {
         if (!EnumUtils.isValidEnum(ArtifactState.class, artifactState))
             throw new LottabyteException(
                     Message.LBE00067,
-                            userDetails.getLanguage(),
+                    userDetails.getLanguage(),
                     artifactState);
         PaginatedArtifactList<Product> res = productRepository.getAllPaginated(offset, limit, "/v1/product/",
                 ArtifactState.valueOf(artifactState), userDetails);
@@ -299,7 +318,7 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     public PaginatedArtifactList<Product> getProductVersions(String productId, Integer offset, Integer limit,
-            UserDetails userDetails) {
+                                                             UserDetails userDetails) {
         if (!productRepository.existsById(productId, userDetails)) {
             PaginatedArtifactList<Product> res = new PaginatedArtifactList<>();
             res.setCount(0);
@@ -336,6 +355,12 @@ public class ProductService extends WorkflowableService<Product> {
                 .collect(Collectors.toList());
         product.getEntity().setIndicatorIds(indicatorIdList);
 
+        List<Reference> referenceForProduct = referenceService.getAllReferenceBySourceIdAndTargetType(id,
+                String.valueOf(ArtifactType.product), userDetails);
+        List<String> productIdList = referenceForProduct.stream().map(r -> r.getEntity().getTargetId())
+                .collect(Collectors.toList());
+        product.getEntity().setProductIds(productIdList);
+
         List<Reference> referenceForPType = referenceService.getAllReferenceBySourceIdAndTargetType(
                 id, String.valueOf(ArtifactType.product_type), userDetails);
         List<String> ptypeIdList = referenceForPType.stream().map(r -> r.getEntity().getTargetId())
@@ -354,6 +379,12 @@ public class ProductService extends WorkflowableService<Product> {
                 .collect(Collectors.toList());
         product.getEntity().setDataAssetIds(assetIdList);
 
+        List<Reference> referenceForBE = referenceService.getAllReferenceBySourceIdAndTargetType(
+                id, String.valueOf(ArtifactType.business_entity), userDetails);
+        List<String> beIdList = referenceForBE.stream().map(r -> r.getEntity().getTargetId())
+                .collect(Collectors.toList());
+        product.getEntity().setTermLinkIds(beIdList);
+
         List<EntitySampleDQRule> dqRules = entitySampleRepository.getSampleDQRulesByProduct(id, userDetails);
         product.getEntity().setDqRules(dqRules);
     }
@@ -363,8 +394,26 @@ public class ProductService extends WorkflowableService<Product> {
         Product product = productRepository.getVersionById(productId, versionId, userDetails);
         if (product == null)
             throw new LottabyteException(Message.LBE03102,
-                            userDetails.getLanguage(), productId, versionId);
+                    userDetails.getLanguage(), productId, versionId);
         fillProductVersionRelations(product, versionId, userDetails);
+        return product;
+    }
+
+    public Product restoreProductVersionById(String productId, Integer versionId, UserDetails userDetails)
+            throws LottabyteException {
+        Product productVersion = getProductVersionById(productId, versionId, userDetails);
+        UpdatableProductEntity productVersionEntity = new UpdatableProductEntity(productVersion.getEntity());
+
+        Product product = updateProduct(productId, productVersionEntity, true, userDetails);
+
+        WorkflowableMetadata versionMetadata = (WorkflowableMetadata)productVersion.getMetadata();
+
+        tagService.mergeTags(versionMetadata.getAncestorDraftId() == null ? productVersion.getId() : versionMetadata.getAncestorDraftId(), serviceArtifactType, product.getId(), serviceArtifactType, userDetails);
+
+        /*if (product == null)
+            throw new LottabyteException(Message.LBE03102,
+                    userDetails.getLanguage(), productId, versionId);
+        fillProductVersionRelations(product, versionId, userDetails);*/
         return product;
     }
 
@@ -375,10 +424,10 @@ public class ProductService extends WorkflowableService<Product> {
                     Message.LBE00303, userDetails.getLanguage());
         if (!entityService.allAttributesExist(product.getEntityAttributeIds(), userDetails))
             throw new LottabyteException(Message.LBE03103,
-                            userDetails.getLanguage(), StringUtils.join(product.getEntityAttributeIds(), ", "));
+                    userDetails.getLanguage(), StringUtils.join(product.getEntityAttributeIds(), ", "));
         if (!indicatorService.allIndicatorsExist(product.getIndicatorIds(), userDetails))
             throw new LottabyteException(Message.LBE03104,
-                            userDetails.getLanguage(), StringUtils.join(product.getIndicatorIds(), ", "));
+                    userDetails.getLanguage(), StringUtils.join(product.getIndicatorIds(), ", "));
 
         String workflowTaskId = null;
         ProcessInstance pi = null;
@@ -404,7 +453,7 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     public void createTermLinksReference(List<String> termLinkIds, String newProductId, String publishedId,
-            UserDetails userDetails) throws LottabyteException {
+                                         UserDetails userDetails) throws LottabyteException {
         if (termLinkIds != null && !termLinkIds.isEmpty()) {
             Integer versionId = publishedId == null ? 0
                     : referenceService.getLastVersionByPublishedId(publishedId, userDetails);
@@ -427,7 +476,7 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     public void createProductReference(UpdatableProductEntity product, String newEntityId, String publishedId,
-            UserDetails userDetails) throws LottabyteException {
+                                       UserDetails userDetails) throws LottabyteException {
         Integer versionId = referenceService.getLastVersionByPublishedId(publishedId, userDetails);
         if (product.getEntityAttributeIds() != null && !product.getEntityAttributeIds().isEmpty()) {
             for (String targetId : product.getEntityAttributeIds()) {
@@ -453,6 +502,21 @@ public class ProductService extends WorkflowableService<Product> {
                 referenceEntity.setPublishedId(publishedId);
                 referenceEntity.setTargetType(ArtifactType.indicator);
                 referenceEntity.setReferenceType(ReferenceType.PRODUCT_TO_INDICATOR);
+                referenceEntity.setVersionId(versionId);
+
+                UpdatableReferenceEntity newReferenceEntity = new UpdatableReferenceEntity(referenceEntity);
+                referenceService.createReference(newReferenceEntity, userDetails);
+            }
+        }
+        if (product.getProductIds() != null && !product.getProductIds().isEmpty()) {
+            for (String targetId : product.getProductIds()) {
+                ReferenceEntity referenceEntity = new ReferenceEntity();
+                referenceEntity.setSourceId(newEntityId);
+                referenceEntity.setSourceType(ArtifactType.product);
+                referenceEntity.setTargetId(targetId);
+                referenceEntity.setPublishedId(publishedId);
+                referenceEntity.setTargetType(ArtifactType.product);
+                referenceEntity.setReferenceType(ReferenceType.PRODUCT_TO_PRODUCT);
                 referenceEntity.setVersionId(versionId);
 
                 UpdatableReferenceEntity newReferenceEntity = new UpdatableReferenceEntity(referenceEntity);
@@ -507,7 +571,7 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     public void updateProductReference(UpdatableProductEntity product, String newEntityId, String publishedId,
-            UserDetails userDetails) throws LottabyteException {
+                                       UserDetails userDetails) throws LottabyteException {
         if (product.getEntityAttributeIds() != null && !product.getEntityAttributeIds().isEmpty()) {
             for (String targetId : product.getEntityAttributeIds()) {
                 ReferenceEntity referenceEntity = new ReferenceEntity();
@@ -521,6 +585,17 @@ public class ProductService extends WorkflowableService<Product> {
         }
         if (product.getIndicatorIds() != null && !product.getIndicatorIds().isEmpty()) {
             for (String targetId : product.getIndicatorIds()) {
+                ReferenceEntity referenceEntity = new ReferenceEntity();
+                referenceEntity.setSourceId(newEntityId);
+                referenceEntity.setTargetId(targetId);
+                referenceEntity.setPublishedId(publishedId);
+
+                UpdatableReferenceEntity newReferenceEntity = new UpdatableReferenceEntity(referenceEntity);
+                referenceService.patchReferenceBySourceIdAndTargetId(newReferenceEntity, userDetails);
+            }
+        }
+        if (product.getProductIds() != null && !product.getProductIds().isEmpty()) {
+            for (String targetId : product.getProductIds()) {
                 ReferenceEntity referenceEntity = new ReferenceEntity();
                 referenceEntity.setSourceId(newEntityId);
                 referenceEntity.setTargetId(targetId);
@@ -566,26 +641,43 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
-    public Product updateProduct(String productId, UpdatableProductEntity productEntity, UserDetails userDetails)
+    public Product updateProduct(String productId, UpdatableProductEntity productEntity, boolean updateNulls, UserDetails userDetails)
             throws LottabyteException {
         if (!productRepository.existsById(productId, userDetails))
             throw new LottabyteException(Message.LBE03101,
-                            userDetails.getLanguage(), productId);
+                    userDetails.getLanguage(), productId);
 
         if (productEntity.getEntityAttributeIds() != null && !productEntity.getEntityAttributeIds().isEmpty()
                 && !entityService.allAttributesExist(productEntity.getEntityAttributeIds(), userDetails))
             throw new LottabyteException(Message.LBE03103,
-                            userDetails.getLanguage(),
-                            StringUtils.join(productEntity.getEntityAttributeIds(), ", "));
+                    userDetails.getLanguage(),
+                    StringUtils.join(productEntity.getEntityAttributeIds(), ", "));
         if (productEntity.getIndicatorIds() != null && !productEntity.getIndicatorIds().isEmpty()
                 && !indicatorService.allIndicatorsExist(productEntity.getIndicatorIds(), userDetails))
             throw new LottabyteException(Message.LBE03104,
-                            userDetails.getLanguage(), StringUtils.join(productEntity.getIndicatorIds(), ", "));
-        if (productEntity.getDataAssetIds() != null && !productEntity.getDataAssetIds().isEmpty()
-                && !dataAssetService.allDataAssetsExist(productEntity.getDataAssetIds(), userDetails))
-            throw new LottabyteException(Message.LBE03105,
-                            userDetails.getLanguage(), StringUtils.join(productEntity.getDataAssetIds(), ", "));
+                    userDetails.getLanguage(), StringUtils.join(productEntity.getIndicatorIds(), ", "));
+        if (productEntity.getDataAssetIds() != null && !productEntity.getDataAssetIds().isEmpty()) {
+            List<String> ids = dataAssetService.allDataAssetsExist(productEntity.getDataAssetIds(), userDetails);
+            if (!ids.isEmpty()) {
+                List<String> links = new ArrayList<>();
+                for (String id : ids) {
+                    DataAsset asset = null;
+                    try {
+                        asset = dataAssetService.getDataAssetById(id, userDetails);
+                    } catch (LottabyteException le) {
+                        log.error(le.getMessage(), le);
+                    }
 
+                    if (asset == null)
+                        links.add(id);
+                    else
+                        links.add("link|data_asset|" + asset.getName() + "|" + id);
+                }
+                throw new LottabyteException(Message.LBE03105,
+                        userDetails.getLanguage(),
+                        org.apache.commons.lang3.StringUtils.join(links, ", "));
+            }
+        }
 
 
         Product current = getProductById(productId, userDetails);
@@ -607,9 +699,27 @@ public class ProductService extends WorkflowableService<Product> {
             if (draftId != null && !draftId.isEmpty())
                 throw new LottabyteException(
                         Message.LBE00326,
-                                userDetails.getLanguage(),
+                        userDetails.getLanguage(),
                         draftId);
         }
+
+        if (updateNulls && productEntity.getDqRules() == null)
+            productEntity.setDqRules(new ArrayList<>());
+        if (updateNulls && productEntity.getEntityAttributeIds() == null)
+            productEntity.setEntityAttributeIds(new ArrayList<>());
+        if (updateNulls && productEntity.getIndicatorIds() == null)
+            productEntity.setIndicatorIds(new ArrayList<>());
+        if (updateNulls && productEntity.getProductIds() == null)
+            productEntity.setProductIds(new ArrayList<>());
+        if (updateNulls && productEntity.getProductTypeIds() == null)
+            productEntity.setProductTypeIds(new ArrayList<>());
+        if (updateNulls && productEntity.getProductSupplyVariantIds() == null)
+            productEntity.setProductSupplyVariantIds(new ArrayList<>());
+        if (updateNulls && productEntity.getDataAssetIds() == null)
+            productEntity.setDataAssetIds(new ArrayList<>());
+        if (updateNulls && productEntity.getTermLinkIds() == null)
+            productEntity.setTermLinkIds(new ArrayList<>());
+
         ProcessInstance pi = null;
 
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
@@ -653,6 +763,15 @@ public class ProductService extends WorkflowableService<Product> {
                             userDetails);
                 }
             }
+            if (productEntity.getProductIds() != null) {
+                createReferenceForProducts(draftId, productEntity.getProductIds(), productId, versionId,
+                        userDetails);
+            } else {
+                if (current.getEntity().getProductIds() != null && !current.getEntity().getProductIds().isEmpty()) {
+                    createReferenceForProducts(draftId, current.getEntity().getProductIds(), productId, versionId,
+                            userDetails);
+                }
+            }
 
             if (productEntity.getProductTypeIds() != null) {
                 createReference(draftId, productEntity.getProductTypeIds(), ArtifactType.product_type,
@@ -689,11 +808,15 @@ public class ProductService extends WorkflowableService<Product> {
             }
 
             if (productEntity.getTermLinkIds() != null) {
-                createTermLinksReference(productEntity.getTermLinkIds(), draftId, productId, userDetails);
+                createReference(draftId, productEntity.getTermLinkIds(), ArtifactType.business_entity,
+                        ReferenceType.PRODUCT_TO_BUSINESS_ENTITY_LINK, productId, versionId, userDetails);
+                //createTermLinksReference(productEntity.getTermLinkIds(), draftId, productId, userDetails);
             } else {
-                if (current.getEntity().getTermLinkIds() != null) {
-                    createTermLinksReference(current.getEntity().getTermLinkIds(), draftId, productId,
-                            userDetails);
+                if (current.getEntity().getTermLinkIds() != null && !current.getEntity().getTermLinkIds().isEmpty()) {
+                    createReference(draftId, current.getEntity().getTermLinkIds(), ArtifactType.business_entity,
+                            ReferenceType.PRODUCT_TO_BUSINESS_ENTITY_LINK, productId, versionId, userDetails);
+                    //createTermLinksReference(current.getEntity().getTermLinkIds(), draftId, productId,
+                      //      userDetails);
                 }
             }
 
@@ -721,6 +844,16 @@ public class ProductService extends WorkflowableService<Product> {
                     }
                 }
                 createReferenceForIndicators(draftId, productEntity.getIndicatorIds(), productId, versionId,
+                        userDetails);
+            }
+
+            if (productEntity.getProductIds() != null) {
+                if (current.getEntity().getIndicatorIds() != null && !current.getEntity().getProductIds().isEmpty()) {
+                    for (String indicatorId : current.getEntity().getProductIds()) {
+                        referenceService.deleteByReferenceSourceIdAndTargetId(draftId, indicatorId, userDetails);
+                    }
+                }
+                createReferenceForProducts(draftId, productEntity.getProductIds(), productId, versionId,
                         userDetails);
             }
 
@@ -757,29 +890,25 @@ public class ProductService extends WorkflowableService<Product> {
                         ReferenceType.PRODUCT_TO_DATA_ASSET, productId, versionId, userDetails);
             }
 
-            if (current.getEntity().getTermLinkIds() != null && !current.getEntity().getTermLinkIds().isEmpty()) {
-                if (productEntity.getTermLinkIds() != null) {
+            if (productEntity.getTermLinkIds() != null) {
+                if (current.getEntity().getTermLinkIds() != null && !current.getEntity().getTermLinkIds().isEmpty()) {
                     for (String id : current.getEntity().getTermLinkIds()) {
-                        referenceService.deleteByReferenceSourceIdAndTargetId(draftId, id,
-                                userDetails);
+                        referenceService.deleteByReferenceSourceIdAndTargetId(draftId, id, userDetails);
                     }
-                    createTermLinksReference(productEntity.getTermLinkIds(), draftId, productId, userDetails);
                 }
-            } else {
-                if (productEntity.getTermLinkIds() != null && !productEntity.getTermLinkIds().isEmpty()) {
-                    createTermLinksReference(productEntity.getTermLinkIds(), draftId, productId, userDetails);
-                }
+                createReference(draftId, productEntity.getTermLinkIds(), ArtifactType.business_entity,
+                        ReferenceType.PRODUCT_TO_BUSINESS_ENTITY_LINK, productId, versionId, userDetails);
             }
+
+
         }
 
-        productRepository.updateProduct(draftId, productEntity, userDetails);
-        return
-
-        getProductById(draftId, userDetails);
+        productRepository.updateProduct(draftId, productEntity, updateNulls, userDetails);
+        return getProductById(draftId, userDetails);
     }
 
     private void updateDQRules(String productId, List<EntitySampleDQRule> ids, List<EntitySampleDQRule> currentIds,
-            UserDetails userDetails) {
+                               UserDetails userDetails) {
         if (currentIds != null && ids != null) {
             ids.stream().filter(x -> EntitySampleService.containsDQRule(currentIds, x)).forEach(y -> productRepository.updateDQRule(productId, y.getEntity().getDqRuleId(), y, userDetails));
             ids.stream().filter(x -> !EntitySampleService.containsDQRule(currentIds, x))
@@ -790,7 +919,7 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     private void createReferenceForAttributes(String sourceId, List<String> dataEntityAttributeIds, String publishedId,
-            Integer versionId, UserDetails userDetails) throws LottabyteException {
+                                              Integer versionId, UserDetails userDetails) throws LottabyteException {
         if (dataEntityAttributeIds != null && !dataEntityAttributeIds.isEmpty()) {
             for (String targetId : dataEntityAttributeIds) {
                 ReferenceEntity referenceEntity = new ReferenceEntity();
@@ -809,7 +938,7 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     private void createReferenceForIndicators(String sourceId, List<String> indicatorIds, String publishedId,
-            Integer versionId, UserDetails userDetails) throws LottabyteException {
+                                              Integer versionId, UserDetails userDetails) throws LottabyteException {
         if (indicatorIds != null && !indicatorIds.isEmpty()) {
             for (String targetId : indicatorIds) {
                 ReferenceEntity referenceEntity = new ReferenceEntity();
@@ -827,8 +956,27 @@ public class ProductService extends WorkflowableService<Product> {
         }
     }
 
+    private void createReferenceForProducts(String sourceId, List<String> productIds, String publishedId,
+                                              Integer versionId, UserDetails userDetails) throws LottabyteException {
+        if (productIds != null && !productIds.isEmpty()) {
+            for (String targetId : productIds) {
+                ReferenceEntity referenceEntity = new ReferenceEntity();
+                referenceEntity.setSourceId(sourceId);
+                referenceEntity.setSourceType(ArtifactType.product);
+                referenceEntity.setTargetId(targetId);
+                referenceEntity.setPublishedId(publishedId);
+                referenceEntity.setTargetType(ArtifactType.product);
+                referenceEntity.setReferenceType(ReferenceType.PRODUCT_TO_PRODUCT);
+                referenceEntity.setVersionId(versionId);
+
+                UpdatableReferenceEntity newReferenceEntity = new UpdatableReferenceEntity(referenceEntity);
+                referenceService.createReference(newReferenceEntity, userDetails);
+            }
+        }
+    }
+
     private void createReference(String sourceId, List<String> artifactIds, ArtifactType artifactType,
-            ReferenceType referenceType, String publishedId, Integer versionId, UserDetails userDetails)
+                                 ReferenceType referenceType, String publishedId, Integer versionId, UserDetails userDetails)
             throws LottabyteException {
         if (artifactIds != null && !artifactIds.isEmpty()) {
             for (String targetId : artifactIds) {
@@ -851,7 +999,7 @@ public class ProductService extends WorkflowableService<Product> {
     public Product deleteProductById(String productId, UserDetails userDetails) throws LottabyteException {
         if (!productRepository.existsById(productId, userDetails))
             throw new LottabyteException(Message.LBE03101,
-                            userDetails.getLanguage(), productId);
+                    userDetails.getLanguage(), productId);
 
         Product current = getProductById(productId, userDetails);
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
@@ -859,7 +1007,7 @@ public class ProductService extends WorkflowableService<Product> {
             if (draftId != null && !draftId.isEmpty())
                 throw new LottabyteException(
                         Message.LBE00505,
-                                userDetails.getLanguage(),
+                        userDetails.getLanguage(),
                         draftId);
 
             ProcessInstance pi = null;
@@ -879,6 +1027,78 @@ public class ProductService extends WorkflowableService<Product> {
             tagService.deleteAllTagsByArtifactId(productId, userDetails);
             productRepository.deleteById(productId, userDetails);
             return null;
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Product archiveProductById(String productId, UserDetails userDetails) throws LottabyteException {
+        if (!productRepository.existsById(productId, userDetails))
+            throw new LottabyteException(Message.LBE03101,
+                    userDetails.getLanguage(), productId);
+
+        Product current = getProductById(productId, userDetails);
+        if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+            String draftId = productRepository.getDraftId(productId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00505,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.ARCHIVE, userDetails);
+            workflowTaskId = pi.getId();
+
+            productRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            createTermLinksReference(current.getEntity().getTermLinkIds(), draftId, productId, userDetails);
+
+            return getProductById(draftId, userDetails);
+        } else {
+            String draftId = productRepository.getDraftId(productId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Product restoreProductById(String productId, UserDetails userDetails) throws LottabyteException {
+        if (!productRepository.existsById(productId, userDetails))
+            throw new LottabyteException(Message.LBE03101,
+                    userDetails.getLanguage(), productId);
+
+        Product current = getProductById(productId, userDetails);
+        if (ArtifactState.ARCHIVED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+            String draftId = productRepository.getDraftId(productId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00505,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.RESTORE, userDetails);
+            workflowTaskId = pi.getId();
+
+            productRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            createTermLinksReference(current.getEntity().getTermLinkIds(), draftId, productId, userDetails);
+
+            return getProductById(draftId, userDetails);
+        } else {
+            String draftId = productRepository.getDraftId(productId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
         }
     }
 
@@ -913,12 +1133,18 @@ public class ProductService extends WorkflowableService<Product> {
                     item.getId(), String.valueOf(ArtifactType.indicator), userDetails);
             List<String> indicatorIdList = referenceForIndicator.stream().map(r -> r.getEntity().getTargetId())
                     .collect(Collectors.toList());
+            List<Reference> referenceForProduct = referenceService.getAllReferenceBySourceIdAndTargetType(
+                    item.getId(), String.valueOf(ArtifactType.product), userDetails);
+            List<String> productIdList = referenceForIndicator.stream().map(r -> r.getEntity().getTargetId())
+                    .collect(Collectors.toList());
 
             item.setEntityAttributeIds(dataAssetIdList);
             item.setIndicatorIds(indicatorIdList);
+            item.setProductIds(productIdList);
             item.setProductTypes(
                     getProductTypesByProductId(item.getId(), userDetails).stream().map(y -> FlatRelation.builder()
                             .id(y.getId()).name(y.getName()).build()).collect(Collectors.toList()));
+            item.setIsInFav(userFavService.isInFav(item.getId(), userDetails));
         }
         return res;
     }
@@ -933,7 +1159,7 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     public SearchResponse<FlatProductSupplyVariant> searchProductSupplyVariants(SearchRequestWithJoin request,
-            UserDetails userDetails) throws LottabyteException {
+                                                                                UserDetails userDetails) throws LottabyteException {
         ServiceUtils.validateSearchRequestWithJoin(request, searchableColumnsProductSupplyVariant,
                 joinColumnsProductSupplyVariant, userDetails);
         SearchResponse<FlatProductSupplyVariant> res = productRepository.searchProductSupplyVariants(request,
@@ -943,7 +1169,7 @@ public class ProductService extends WorkflowableService<Product> {
 
     @Override
     public String createDraft(String publishedId, WorkflowState workflowState, WorkflowType workflowType,
-            UserDetails userDetails) throws LottabyteException {
+                              UserDetails userDetails) throws LottabyteException {
         Product current = getById(publishedId, userDetails);
 
         ProcessInstance pi = null;
@@ -1016,6 +1242,21 @@ public class ProductService extends WorkflowableService<Product> {
                 referenceService.createReference(new UpdatableReferenceEntity(referenceEntity), userDetails);
             }
         }
+        if (current.getEntity().getProductIds() != null && !current.getEntity().getProductIds().isEmpty()) {
+            for (String s : current.getEntity().getProductIds()) {
+                ReferenceEntity referenceEntity = new ReferenceEntity();
+                referenceEntity.setSourceId(draftId);
+                referenceEntity.setSourceType(ArtifactType.product);
+                referenceEntity.setTargetId(s);
+                referenceEntity.setPublishedId(publishedId);
+                referenceEntity.setTargetType(ArtifactType.product);
+                referenceEntity.setReferenceType(ReferenceType.PRODUCT_TO_PRODUCT);
+                referenceEntity.setVersionId(0);
+
+                referenceService.createReference(new UpdatableReferenceEntity(referenceEntity), userDetails);
+            }
+        }
+
 
         if (current.getEntity().getEntityAttributeIds() != null
                 && !current.getEntity().getEntityAttributeIds().isEmpty()) {
@@ -1023,11 +1264,16 @@ public class ProductService extends WorkflowableService<Product> {
                     userDetails);
         }
 
+        if (current.getEntity().getDqRules() != null && !current.getEntity().getDqRules().isEmpty())
+            mergeDQRules(draftId, publishedId, current.getEntity().getDqRules(), new ArrayList<>(), userDetails);
+
+        tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
+
         return draftId;
     }
 
     public EntitySampleDQRule createDQRule(String productId,
-            UpdatableEntitySampleDQRule entitySampleDQRule, UserDetails userDetails)
+                                           UpdatableEntitySampleDQRule entitySampleDQRule, UserDetails userDetails)
             throws LottabyteException {
 
         EntitySampleDQRule sampleDQRule = productRepository.createDQRule(productId,
@@ -1036,7 +1282,7 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     public List<EntitySampleDQRule> getDQRules(String productId,
-            UserDetails userDetails) throws LottabyteException {
+                                               UserDetails userDetails) throws LottabyteException {
 
         return entitySampleRepository.getSampleDQRulesByProduct(productId,
                 userDetails);
@@ -1044,46 +1290,52 @@ public class ProductService extends WorkflowableService<Product> {
 
     public SearchableProduct getSearchableArtifact(Product product, UserDetails userDetails) {
         SearchableProduct sa = SearchableProduct.builder()
-            .id(product.getMetadata().getId())
-            .versionId(product.getMetadata().getVersionId())
-            .name(product.getMetadata().getName())
-            .description(product.getEntity().getDescription())
-            .modifiedBy(product.getMetadata().getModifiedBy())
-            .modifiedAt(product.getMetadata().getModifiedAt())
-            .artifactType(product.getMetadata().getArtifactType())
-            .effectiveStartDate(product.getMetadata().getEffectiveStartDate())
-            .effectiveEndDate(product.getMetadata().getEffectiveEndDate())
-            .tags(Helper.getEmptyListIfNull(product.getMetadata().getTags()).stream()
-                    .map(x -> x.getName()).collect(Collectors.toList()))
+                .id(product.getMetadata().getId())
+                .versionId(product.getMetadata().getVersionId())
+                .name(product.getMetadata().getName())
+                .description(product.getEntity().getDescription())
+                .modifiedBy(product.getMetadata().getModifiedBy())
+                .modifiedAt(product.getMetadata().getModifiedAt())
+                .artifactType(product.getMetadata().getArtifactType())
+                .artifactState(((WorkflowableMetadata)product.getMetadata()).getState().name())
+                .effectiveStartDate(product.getMetadata().getEffectiveStartDate())
+                .effectiveEndDate(product.getMetadata().getEffectiveEndDate())
+                .tags(Helper.getEmptyListIfNull(product.getMetadata().getTags()).stream()
+                        .map(x -> x.getName()).collect(Collectors.toList()))
 
-            .indicatorIds(product.getEntity().getIndicatorIds())
-            .indicatorNames(
-                    Helper.getEmptyListIfNull(productRepository.getIndicatorsByProductId(product.getId(), userDetails)
-                            .stream().map(ind -> ind.getName()).collect(Collectors.toList())))
-            .entityAttributeIds(product.getEntity().getEntityAttributeIds())
-            .domainId(product.getEntity().getDomainId())
-            .problem(product.getEntity().getProblem())
-            .consumer(product.getEntity().getConsumer())
-            .value(product.getEntity().getValue())
-            .financeSource(product.getEntity().getFinanceSource())
-            .productTypeIds(Helper.getEmptyListIfNull(product.getEntity().getProductTypeIds()))
-            .productTypeNames(
-                    Helper.getEmptyListIfNull(productRepository.getProductTypesByProductId(product.getId(), userDetails)
-                            .stream().map(pt -> pt.getName()).collect(Collectors.toList())))
-            .productSupplyVariantIds(Helper.getEmptyListIfNull(product.getEntity().getProductSupplyVariantIds()))
-            .productSupplyVariantNames(Helper
-                    .getEmptyListIfNull(productRepository.getProductSupplyVariantsByProductId(product.getId(), userDetails)
-                            .stream().map(psv -> psv.getName()).collect(Collectors.toList())))
+                .indicatorIds(product.getEntity().getIndicatorIds())
+                .productIds(product.getEntity().getProductIds())
+                .indicatorNames(
+                        Helper.getEmptyListIfNull(productRepository.getIndicatorsByProductId(product.getId(), userDetails)
+                                .stream().map(ind -> ind.getName()).collect(Collectors.toList())))
+                .productNames(
+                        Helper.getEmptyListIfNull(productRepository.getProductsByProductId(product.getId(), userDetails)
+                                .stream().map(prod -> prod.getName()).collect(Collectors.toList())))
+                .entityAttributeIds(product.getEntity().getEntityAttributeIds())
+                .domainId(product.getEntity().getDomainId())
+                .entityQueryId(product.getEntity().getEntityQueryId())
+                .problem(product.getEntity().getProblem())
+                .consumer(product.getEntity().getConsumer())
+                .value(product.getEntity().getValue())
+                .financeSource(product.getEntity().getFinanceSource())
+                .productTypeIds(Helper.getEmptyListIfNull(product.getEntity().getProductTypeIds()))
+                .productTypeNames(
+                        Helper.getEmptyListIfNull(productRepository.getProductTypesByProductId(product.getId(), userDetails)
+                                .stream().map(pt -> pt.getName()).collect(Collectors.toList())))
+                .productSupplyVariantIds(Helper.getEmptyListIfNull(product.getEntity().getProductSupplyVariantIds()))
+                .productSupplyVariantNames(Helper
+                        .getEmptyListIfNull(productRepository.getProductSupplyVariantsByProductId(product.getId(), userDetails)
+                                .stream().map(psv -> psv.getName()).collect(Collectors.toList())))
 
-            .domains(Collections.singletonList(product.getEntity().getDomainId()))
-            .link(product.getEntity().getLink())
-            .limits(product.getEntity().getLimits())
-            .limits_internal(product.getEntity().getLimits_internal())
-            .roles(product.getEntity().getRoles()).build();
+                .domains(Collections.singletonList(product.getEntity().getDomainId()))
+                .link(product.getEntity().getLink())
+                .limits(product.getEntity().getLimits())
+                .limits_internal(product.getEntity().getLimits_internal())
+                .roles(product.getEntity().getRoles()).build();
         return sa;
     }
 
-    public void mergeDQRules(String draftId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
+    public void mergeDQRules(String productId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
 
         if (publishedRules != null) {
             for (EntitySampleDQRule rule : publishedRules) {
@@ -1095,7 +1347,7 @@ public class ProductService extends WorkflowableService<Product> {
         if (draftRules != null) {
             for (EntitySampleDQRule rule : draftRules) {
                 EntitySampleDQRuleEntity e = new EntitySampleDQRuleEntity();
-                e.setProductId(publishedId);
+                e.setProductId(productId);
                 e.setDqRuleId(rule.getEntity().getDqRuleId());
                 e.setPublishedId(publishedId);
                 e.setSettings(rule.getEntity().getSettings());

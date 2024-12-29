@@ -7,6 +7,7 @@ import lombok.ToString;
 import ru.bssg.lottabyte.core.model.ArtifactState;
 import ru.bssg.lottabyte.core.model.FlatModeledObject;
 import ru.bssg.lottabyte.core.model.FlatRelation;
+import ru.bssg.lottabyte.core.model.IFlatModeledObjectWithTags;
 
 import java.util.List;
 
@@ -14,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @ToString(callSuper=true)
 @EqualsAndHashCode(callSuper = true)
-public class FlatBusinessEntity extends FlatModeledObject {
+public class FlatBusinessEntity extends FlatModeledObject implements IFlatModeledObjectWithTags {
     private String techName;
     private String definition;
     private String regulation;
@@ -27,6 +28,7 @@ public class FlatBusinessEntity extends FlatModeledObject {
     private String domainId;
     private List<String> tags;
     private String domainName;
+    private String datatypeName;
     private String parentId;
     private String formula;
     private String examples;

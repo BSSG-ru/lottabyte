@@ -6,19 +6,26 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import ru.bssg.lottabyte.core.model.FlatModeledObject;
+import ru.bssg.lottabyte.core.model.IFlatModeledObjectWithTags;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper=false)
-public class FlatDataEntityAttribute extends FlatModeledObject {
+public class FlatDataEntityAttribute extends FlatModeledObject implements IFlatModeledObjectWithTags {
     private DataEntityAttributeType attributeType;
     private String entityId;
     private List<String> tags;
     private String attributeId;
     private Boolean isPk;
+    private String attributeTypeName;
+    private LocalDateTime created;
+    private String metaColumnId;
+    private String metaColumnName;
+    private String metaDatabaseId;
 
     public FlatDataEntityAttribute(DataEntityAttribute de) {
         super(de.getFlatModeledObject());

@@ -3,6 +3,7 @@ package ru.bssg.lottabyte.coreapi.service;
 import org.flowable.engine.runtime.ProcessInstance;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
+import org.jooq.tools.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -22,7 +23,9 @@ import ru.bssg.lottabyte.core.model.entitySample.EntitySample;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRuleEntity;
 import ru.bssg.lottabyte.core.model.entitySample.UpdatableEntitySampleDQRule;
+import ru.bssg.lottabyte.core.model.indicator.Indicator;
 import ru.bssg.lottabyte.core.model.system.System;
+import ru.bssg.lottabyte.core.model.system.UpdatableSystemEntity;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowTask;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowType;
 import ru.bssg.lottabyte.core.ui.model.*;
@@ -52,10 +55,14 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
         private final WorkflowService workflowService;
         private final ArtifactType serviceArtifactType = ArtifactType.data_asset;
         private final DQRuleService dqRuleService;
+        private final ReferenceService referenceService;
+        private final UserFavService userFavService;
 
         private final SearchColumn[] searchableColumns = {
                         new SearchColumn("name", SearchColumn.ColumnType.Text),
+                        new SearchColumn("tech_name", SearchColumn.ColumnType.Text),
                         new SearchColumn("description", SearchColumn.ColumnType.Text),
+                        new SearchColumn("short_description", SearchColumn.ColumnType.Text),
                         new SearchColumn("modified", SearchColumn.ColumnType.Timestamp),
                         new SearchColumn("system_id", SearchColumn.ColumnType.UUID),
                         new SearchColumn("domain_id", SearchColumn.ColumnType.UUID),
@@ -86,8 +93,9 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         SystemRepository systemRepository,
                         EntityRepository entityRepository,
                         EntitySampleRepository entitySampleRepository,
-                                DQRuleService dqRuleService) {
-                super(dataAssetRepository, workflowService, tagService, ArtifactType.data_asset, elasticsearchService);
+                        DQRuleService dqRuleService, ReferenceService referenceService,
+                        UserFavService userFavService) {
+                super(dataAssetRepository, workflowService, tagService, ArtifactType.data_asset, elasticsearchService, referenceService);
                 this.dataAssetRepository = dataAssetRepository;
                 this.customAttributeDefinitionService = customAttributeDefinitionService;
                 this.systemService = systemService;
@@ -102,6 +110,8 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                 this.businessEntityRepository = businessEntityRepository;
                 this.entitySampleRepository = entitySampleRepository;
                 this.dqRuleService = dqRuleService;
+                this.referenceService = referenceService;
+                this.userFavService = userFavService;
         }
 
         // WF interface
@@ -125,6 +135,8 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                 }
                 dataAssetRepository.createDraftFromPublished(publishedId, draftId, workflowTaskId, userDetails);
 
+                if (current.getEntity().getDqRules() != null && !current.getEntity().getDqRules().isEmpty())
+                        mergeDQRules(draftId, publishedId, current.getEntity().getDqRules(), new ArrayList<>(), userDetails);
 
                 customAttributeDefinitionService.copyCustomAttributes(publishedId, draftId, serviceArtifactType,
                                 userDetails);
@@ -209,6 +221,41 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
          * }
          */
 
+        public void wfApproveRemoval(String draftId, UserDetails userDetails) throws LottabyteException {
+
+                DataAsset current = dataAssetRepository.getById(draftId, userDetails);
+                if (current == null)
+                        throw new LottabyteException(
+                                Message.LBE03004,
+                                userDetails.getLanguage(),
+                                serviceArtifactType, draftId);
+                String publishedId = ((WorkflowableMetadata) current.getMetadata()).getPublishedId();
+                if (publishedId == null)
+                        throw new LottabyteException(
+                                Message.LBE03006,
+                                userDetails.getLanguage(),
+                                serviceArtifactType, draftId);
+
+                List<ModeledObject<Entity>> list = dataAssetRepository.getObjectsReferencingAsset(publishedId, userDetails);
+                if (!list.isEmpty()) {
+                        throw new LottabyteException(Message.LBE00507, userDetails.getLanguage(), StringUtils.join(
+                                list.stream().map(item -> "link|" + item.getEntity().getArtifactType() + "|"
+                                        + item.getEntity().getName() + "|" + item.getEntity().getId())
+                                        .collect(Collectors.toList()).toArray(), ", ") + " ");
+                }
+
+                dataAssetRepository.setStateById(current.getId(), ArtifactState.DRAFT_HISTORY, userDetails);
+                dataAssetRepository.setStateById(publishedId, ArtifactState.REMOVED, userDetails);
+                elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(publishedId), userDetails);
+        }
+
+        public DataAsset wfSend(String draftId, UserDetails userDetails) throws LottabyteException {
+                DataAsset draft = dataAssetRepository.getById(draftId, userDetails);
+
+
+                return draft;
+        }
+
         public DataAsset wfPublish(String draftDataAssetId, UserDetails userDetails) throws LottabyteException {
                 DataAsset draft = getDataAssetById(draftDataAssetId, userDetails);
                 draft.getEntity().setCustomAttributes(
@@ -220,6 +267,9 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                                         Message.LBE03004,
                                                         userDetails.getLanguage(),
                                         serviceArtifactType, draftDataAssetId);
+                if (StringUtils.isBlank(draft.getEntity().getDomainId()))
+                        throw new LottabyteException(Message.LBE05000, userDetails.getLanguage());
+
                 // TODO: Validate Data Asset name unuqieness
                 // if (entityRepository.dataEntityNameExists(draft.getEntity().getName(),
                 // draft.getEntity().getEntityFolderId(), publishedId, userDetails))
@@ -231,7 +281,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         publishedId = dataAssetRepository.publishDraft(draftDataAssetId, null, userDetails);
 
                         if (draft.getEntity().getDqRules() != null && !draft.getEntity().getDqRules().isEmpty())
-                                mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), null, userDetails);
+                                mergeDQRules(publishedId, publishedId, draft.getEntity().getDqRules(), null, userDetails);
 
                         tagService.mergeTags(draftDataAssetId, serviceArtifactType, publishedId, serviceArtifactType,
                                         userDetails);
@@ -255,7 +305,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
 
                         dataAssetRepository.publishDraft(draftDataAssetId, publishedId, userDetails);
 
-                        mergeDQRules(draft.getId(), publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
+                        mergeDQRules(publishedId, publishedId, draft.getEntity().getDqRules(), currentPublished.getEntity().getDqRules(), userDetails);
 
                         tagService.mergeTags(draftDataAssetId, serviceArtifactType, publishedId, serviceArtifactType,
                                         userDetails);
@@ -283,7 +333,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
 
         // Data Asset
 
-        public Boolean allDataAssetsExist(List<String> systemIds, UserDetails userDetails) {
+        public List<String> allDataAssetsExist(List<String> systemIds, UserDetails userDetails) {
                 return dataAssetRepository.allDataAssetsExist(systemIds, userDetails);
         }
 
@@ -546,8 +596,8 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                                         userDetails.getLanguage());
                 if (newDataAssetEntity.getSystemId() != null)
                         validateSystem(newDataAssetEntity, null, userDetails);
-                if (newDataAssetEntity.getDomainId() != null)
-                        validateDomain(newDataAssetEntity, null, userDetails);
+                //if (newDataAssetEntity.getDomainId() != null)
+                        //validateDomain(newDataAssetEntity, null, userDetails);
                 if (newDataAssetEntity.getEntityId() != null)
                         validateEntity(newDataAssetEntity, null, userDetails);
                 /*
@@ -592,7 +642,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
 
         @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
         public DataAsset patchDataAsset(String dataAssetId, UpdatableDataAssetEntity dataAssetEntity,
-                        UserDetails userDetails) throws LottabyteException {
+                        boolean updateNulls, UserDetails userDetails) throws LottabyteException {
                 DataAsset current = getDataAssetById(dataAssetId, userDetails);
                 if (current == null)
                         throw new LottabyteException(Message.LBE00503,
@@ -634,6 +684,9 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         }
                 }
 
+                if (updateNulls && dataAssetEntity.getDqRules() == null)
+                        dataAssetEntity.setDqRules(new ArrayList<>());
+
                 ProcessInstance pi = null;
                 if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
 
@@ -668,7 +721,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         updateDQRulesLinks(dataAssetId, ((WorkflowableMetadata) current.getMetadata()).getPublishedId(), dataAssetEntity.getDqRules(), current.getEntity().getDqRules(), userDetails);
                 }
 
-                dataAssetRepository.patchDataAsset(draftId, dataAssetEntity, userDetails);
+                dataAssetRepository.patchDataAsset(draftId, dataAssetEntity, updateNulls, userDetails);
                 customAttributeDefinitionService.patchCustomAttributes(dataAssetEntity.getCustomAttributes(),
                                 draftId, ArtifactType.data_asset.getText(), userDetails, false);
 
@@ -698,6 +751,14 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                                 && !dataAssetRepository.hasAccessToDataAsset(dataAssetId, userDetails))
                         throw new LottabyteException(Message.LBE00504,
                                                         userDetails.getLanguage(), dataAssetId);
+
+                List<ModeledObject<Entity>> list = dataAssetRepository.getObjectsReferencingAsset(dataAssetId, userDetails);
+                if (!list.isEmpty()) {
+                        throw new LottabyteException(Message.LBE00507, userDetails.getLanguage(), StringUtils.join(
+                                list.stream().map(item -> "link|" + item.getEntity().getArtifactType() + "|"
+                                + item.getEntity().getName() + "|" + item.getEntity().getId())
+                                .collect(Collectors.toList()).toArray(), ", ") + " ");
+                }
 
                 if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
                         String draftId = dataAssetRepository.getDraftId(dataAssetId, userDetails);
@@ -741,6 +802,88 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                  */
         }
 
+        @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+        public DataAsset archiveDataAssetById(String dataAssetId, UserDetails userDetails) throws LottabyteException {
+                DataAsset current = getDataAssetById(dataAssetId, userDetails);
+                if (userDetails.getStewardId() != null
+                        && !dataAssetRepository.hasAccessToDataAsset(dataAssetId, userDetails))
+                        throw new LottabyteException(Message.LBE00504,
+                                userDetails.getLanguage(), dataAssetId);
+
+                List<ModeledObject<Entity>> list = dataAssetRepository.getObjectsReferencingAsset(dataAssetId, userDetails);
+                if (!list.isEmpty()) {
+                        throw new LottabyteException(Message.LBE00507, userDetails.getLanguage(), StringUtils.join(
+                                list.stream().map(item -> "link|" + item.getEntity().getArtifactType() + "|"
+                                        + item.getEntity().getName() + "|" + item.getEntity().getId())
+                                        .collect(Collectors.toList()).toArray(), ", ") + " ");
+                }
+
+                if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+                        String draftId = dataAssetRepository.getDraftId(dataAssetId, userDetails);
+                        if (draftId != null && !draftId.isEmpty())
+                                throw new LottabyteException(
+                                        Message.LBE00505,
+                                        userDetails.getLanguage(),
+                                        draftId);
+                        ProcessInstance pi = null;
+                        String workflowTaskId = null;
+
+                        draftId = UUID.randomUUID().toString();
+                        pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.ARCHIVE, userDetails);
+                        workflowTaskId = pi.getId();
+
+                        dataAssetRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+                        customAttributeDefinitionService.copyCustomAttributes(dataAssetId, draftId, serviceArtifactType,
+                                userDetails);
+
+                        return getDataAssetById(draftId, userDetails);
+                } else {
+                        String draftId = dataAssetRepository.getDraftId(dataAssetId, userDetails);
+                        throw new LottabyteException(
+                                Message.LBE00119,
+                                userDetails.getLanguage(),
+                                draftId);
+                }
+        }
+
+        @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+        public DataAsset restoreDataAssetById(String dataAssetId, UserDetails userDetails) throws LottabyteException {
+                DataAsset current = getDataAssetById(dataAssetId, userDetails);
+                if (userDetails.getStewardId() != null
+                        && !dataAssetRepository.hasAccessToDataAsset(dataAssetId, userDetails))
+                        throw new LottabyteException(Message.LBE00504,
+                                userDetails.getLanguage(), dataAssetId);
+
+                if (ArtifactState.ARCHIVED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+                        String draftId = dataAssetRepository.getDraftId(dataAssetId, userDetails);
+                        if (draftId != null && !draftId.isEmpty())
+                                throw new LottabyteException(
+                                        Message.LBE00505,
+                                        userDetails.getLanguage(),
+                                        draftId);
+                        ProcessInstance pi = null;
+                        String workflowTaskId = null;
+
+                        draftId = UUID.randomUUID().toString();
+                        pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.RESTORE, userDetails);
+                        workflowTaskId = pi.getId();
+
+                        dataAssetRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+                        customAttributeDefinitionService.copyCustomAttributes(dataAssetId, draftId, serviceArtifactType,
+                                userDetails);
+
+                        return getDataAssetById(draftId, userDetails);
+                } else {
+                        String draftId = dataAssetRepository.getDraftId(dataAssetId, userDetails);
+                        throw new LottabyteException(
+                                Message.LBE00119,
+                                userDetails.getLanguage(),
+                                draftId);
+                }
+        }
+
         public SearchResponse<FlatDataAsset> searchDataAssets(SearchRequestWithJoin request, UserDetails userDetails)
                         throws LottabyteException {
                 ServiceUtils.validateSearchRequestWithJoin(request, searchableColumns, joinColumns, userDetails);
@@ -757,6 +900,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                                         if (task != null)
                                                 y.setWorkflowState(task.getEntity().getWorkflowState());
                                 });
+                res.getItems().forEach(d -> d.setIsInFav(userFavService.isInFav(d.getId(), userDetails)));
                 return res;
         }
 
@@ -770,6 +914,20 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
 
                 fillDataAssetVersionRelations(dataAsset, userDetails);
                 return dataAsset;
+        }
+
+        public DataAsset restoreDataAssetVersionById(String assetId, Integer versionId, UserDetails userDetails)
+                throws LottabyteException {
+                DataAsset assetVersion = getDataAssetVersionById(assetId, versionId, userDetails);
+                UpdatableDataAssetEntity assetVersionEntity = new UpdatableDataAssetEntity(assetVersion.getEntity());
+
+                DataAsset asset = patchDataAsset(assetId, assetVersionEntity, true, userDetails);
+
+                WorkflowableMetadata versionMetadata = (WorkflowableMetadata)assetVersion.getMetadata();
+
+                tagService.mergeTags(versionMetadata.getAncestorDraftId() == null ? assetVersion.getId() : versionMetadata.getAncestorDraftId(), serviceArtifactType, asset.getId(), serviceArtifactType, userDetails);
+
+                return asset;
         }
 
         private void fillDataAssetVersionRelations(DataAsset dataAsset, UserDetails userDetails)
@@ -827,9 +985,11 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         .versionId(dataAsset.getMetadata().getVersionId())
                         .name(dataAsset.getMetadata().getName())
                         .description(dataAsset.getEntity().getDescription())
+                        .shortDescription(dataAsset.getEntity().getShortDescription())
                         .modifiedBy(dataAsset.getMetadata().getModifiedBy())
                         .modifiedAt(dataAsset.getMetadata().getModifiedAt())
                         .artifactType(dataAsset.getMetadata().getArtifactType())
+                        .artifactState(((WorkflowableMetadata)dataAsset.getMetadata()).getState().name())
                         .effectiveStartDate(dataAsset.getMetadata().getEffectiveStartDate())
                         .effectiveEndDate(dataAsset.getMetadata().getEffectiveEndDate())
                         .tags(Helper.getEmptyListIfNull(dataAsset.getMetadata().getTags()).stream()
@@ -844,6 +1004,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         .hasSample(dataAsset.getEntity().getHasSample())
                         .hasStatistics(dataAsset.getEntity().getHasStatistics())
                         .rowsCount(dataAsset.getEntity().getRowsCount())
+                        .techName(dataAsset.getEntity().getTechName())
                         .customAttributes(dataAsset.getEntity().getCustomAttributes().stream()
                                         .map(CustomAttribute::getSearchableArtifact).collect(Collectors.toList())).build();
 
@@ -875,7 +1036,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                 return entitySampleRepository.getSampleDQRule(sampleDQRule.getId(), userDetails);
         }*/
 
-        public void mergeDQRules(String draftId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
+        public void mergeDQRules(String assetId, String publishedId, List<EntitySampleDQRule> draftRules, List<EntitySampleDQRule> publishedRules, UserDetails userDetails) throws LottabyteException {
 
                 if (publishedRules != null) {
                         for (EntitySampleDQRule rule : publishedRules) {
@@ -887,7 +1048,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                 if (draftRules != null) {
                         for (EntitySampleDQRule rule : draftRules) {
                                 EntitySampleDQRuleEntity e = new EntitySampleDQRuleEntity();
-                                e.setAssetId(publishedId);
+                                e.setAssetId(assetId);
                                 e.setDqRuleId(rule.getEntity().getDqRuleId());
                                 e.setPublishedId(publishedId);
                                 e.setSettings(rule.getEntity().getSettings());

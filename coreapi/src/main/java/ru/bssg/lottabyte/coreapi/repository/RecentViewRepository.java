@@ -46,8 +46,8 @@ public class RecentViewRepository {
     public RecentView getRecentViewByArtifactIdAndType(String artifactId, String artifactType, UserDetails userDetails) {
         List<RecentView> recentViewList = jdbcTemplate.query("SELECT id, user_id, artifact_id, artifact_type, viewed_time \n" +
                         "FROM da_" + userDetails.getTenant() + ".\"recent_view\"  " +
-                        "where artifact_id = ? AND artifact_type = ?;",
-                new RecentViewRowMapper(), UUID.fromString(artifactId), artifactType);
+                        "where artifact_id = ? AND artifact_type = ? AND user_id = ?;",
+                new RecentViewRowMapper(), UUID.fromString(artifactId), artifactType, userDetails.getUid());
 
         return recentViewList.stream().findFirst().orElse(null);
     }
@@ -89,6 +89,16 @@ public class RecentViewRepository {
                         "ORDER BY viewed_time DESC LIMIT ?",
                 new RecentViewRowMapper(),
                 (artifactType != null ? new Object[]{userDetails.getUid(), artifactType, limit} : new Object[]{ userDetails.getUid(), limit}));
+    }
+
+    public void recordArtifactView(String artifactId, String artifactType, UserDetails userDetails) {
+        Date dt = new Date(new java.util.Date().getTime());
+        if (jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".artifact_views SET views=views+1 WHERE artifact_id=? AND view_date=?",
+                UUID.fromString(artifactId), dt) == 0) {
+            jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".artifact_views (id, " +
+                    "artifact_id, artifact_type, view_date, views) VALUES (?,?,?,?,?)", UUID.randomUUID(),
+                    UUID.fromString(artifactId), artifactType, dt, 1);
+        }
     }
 
 }

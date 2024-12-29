@@ -133,6 +133,9 @@ public class UserRepositoryImpl implements UserRepository {
                 externalGroupEntity.setPermissions(new ArrayList<>(Arrays.asList(array)));
             }
 
+            externalGroupEntity.setUserRoleNames(rs.getString("user_role_names"));
+            externalGroupEntity.setPermissionNames(rs.getString("permission_names"));
+
             Metadata md = new Metadata();
             md.setId(rs.getString("id"));
             md.setCreatedAt(rs.getTimestamp("created").toLocalDateTime());
@@ -170,10 +173,64 @@ public class UserRepositoryImpl implements UserRepository {
                 userDetails.setUserRoles(new ArrayList<>(Arrays.asList(array)));
                 permissions.addAll(getPermissionsByRoles(userDetails.getUserRoles()));
             }
+
             try {
                 if (rs.getString("user_domains") != null) {
                     UUID[] array = (UUID[]) rs.getArray("user_domains").getArray();
                     userDetails.setUserDomains(new ArrayList<>(Arrays.asList(array)));
+                }
+            } catch (Exception e) {}
+
+            try {
+                if (rs.getString("steward_domains") != null) {
+                    UUID[] array = (UUID[]) rs.getArray("steward_domains").getArray();
+                    userDetails.setStewardDomains(new ArrayList<>(Arrays.asList(array)));
+                }
+            } catch (Exception e) {}
+
+            userDetails.setPermissions(permissions.stream().collect(Collectors.toList()));
+            return userDetails;
+        }
+    }
+
+    class UserDetailsRowMapper2 implements RowMapper<UserDetails> {
+        @Override
+        public UserDetails mapRow(ResultSet rs, int rowNum) throws SQLException {
+            UserDetails userDetails = new UserDetails();
+            userDetails.setUid(rs.getString("uid"));
+            userDetails.setUsername(rs.getString("username"));
+            userDetails.setApprovalStatus(rs.getString("approval_status"));
+            userDetails.setAuthenticator(rs.getString("authenticator"));
+            userDetails.setCurrentAccountStatus(rs.getString("current_account_status"));
+            userDetails.setDeletable(rs.getBoolean("deletable"));
+            userDetails.setDisplayName(rs.getString("display_name"));
+            userDetails.setEmail(rs.getString("email"));
+            userDetails.setInternalUser(rs.getString("password_hash") != null);
+            userDetails.setPassword(rs.getString("password_hash"));
+            userDetails.setTenant(rs.getString("tenant"));
+            userDetails.setStewardId(rs.getString("steward_id"));
+            Set<String> permissions = new HashSet<>();
+            if (rs.getArray("permissions") != null) {
+                String[] array = (String[])rs.getArray("permissions").getArray();
+                permissions.addAll(Arrays.asList(array));
+            }
+            if (rs.getString("user_roles") != null) {
+                String[] array = (String[])rs.getArray("user_roles").getArray();
+                userDetails.setUserRoles(new ArrayList<>(Arrays.asList(array)));
+                permissions.addAll(getPermissionsByRoles(userDetails.getUserRoles()));
+            }
+            if (rs.getObject("user_role_names") != null)
+                userDetails.setUserRoleNames(rs.getString("user_role_names"));
+            try {
+                if (rs.getString("user_domains") != null) {
+                    UUID[] array = (UUID[]) rs.getArray("user_domains").getArray();
+                    userDetails.setUserDomains(new ArrayList<>(Arrays.asList(array)));
+                }
+            } catch (Exception e) {}
+            try {
+                if (rs.getString("steward_domains") != null) {
+                    UUID[] array = (UUID[]) rs.getArray("steward_domains").getArray();
+                    userDetails.setStewardDomains(new ArrayList<>(Arrays.asList(array)));
                 }
             } catch (Exception e) {}
             userDetails.setPermissions(permissions.stream().collect(Collectors.toList()));
@@ -186,7 +243,9 @@ public class UserRepositoryImpl implements UserRepository {
         return jdbcTemplate.query("SELECT pu.uid, pu.username, pu.display_name, pu.description, pu.email, pu.salt, pu.password_hash, pu.apikey_hash, pu.apikey_salt, " +
                         "pu.approval_status, pu.permissions, pu.user_roles, pu.current_account_status, pu.internal_user, pu.deletable, pu.authenticator, pu.created, pu.modified, pu.tenant, " +
                         "s.id as steward_id " +
-                        ", array(SELECT domain_id FROM da_" + tenant + ".user_to_domain WHERE user_id=pu.uid) AS user_domains " +
+                        ", array(SELECT domain_id FROM da_" + tenant + ".user_to_domain JOIN da_" + tenant + ".domain d ON d.id=domain_id AND d.state='PUBLISHED' WHERE user_id=pu.uid) AS user_domains, " +
+                        " array(SELECT domain_id FROM da_" + tenant + ".steward_to_domain s2d JOIN da_" + tenant +
+                        ".steward s ON s2d.steward_id=s.id AND s.user_id=pu.uid JOIN da_" + tenant + ".domain d ON d.id=s2d.domain_id AND d.state='PUBLISHED') AS steward_domains " +
                         "FROM usermgmt.platform_users pu left join da_" + tenant + ".steward s on s.user_id = pu.uid " +
                         "WHERE pu.username = ? AND pu.tenant = ?",
                 new UserDetailsRowMapper(), username, tenant).stream().findFirst().orElse(null);
@@ -197,7 +256,9 @@ public class UserRepositoryImpl implements UserRepository {
         return jdbcTemplate.query("SELECT pu.uid, pu.username, pu.display_name, pu.description, pu.email, pu.salt, pu.password_hash, pu.apikey_hash, pu.apikey_salt, " +
                         "pu.approval_status, pu.permissions, pu.user_roles, pu.current_account_status, pu.internal_user, pu.deletable, pu.authenticator, pu.created, pu.modified, pu.tenant, " +
                         "s.id as steward_id " +
-                        ", array(SELECT domain_id FROM da_" + tenant + ".user_to_domain WHERE user_id=pu.uid) AS user_domains " +
+                        ", array(SELECT domain_id FROM da_" + tenant + ".user_to_domain JOIN da_" + tenant + ".domain d ON d.id=domain_id AND d.state='PUBLISHED' WHERE user_id=pu.uid) AS user_domains, " +
+                        " array(SELECT domain_id FROM da_" + tenant + ".steward_to_domain s2d JOIN da_" + tenant +
+                        ".steward s ON s2d.steward_id=s.id AND s.user_id=pu.uid JOIN da_" + tenant + ".domain d ON d.id=s2d.domain_id AND d.state='PUBLISHED') AS steward_domains " +
                         "FROM usermgmt.platform_users pu left join da_" + tenant + ".steward s on s.user_id = pu.uid " +
                         "WHERE pu.uid = ? AND pu.tenant = ?",
                 new UserDetailsRowMapper(), Long.parseLong(userId), tenant).stream().findFirst().orElse(null);
@@ -302,7 +363,8 @@ public class UserRepositoryImpl implements UserRepository {
                     @Override
                     public void processRow(ResultSet rs) {
                         try {
-                            ldapGroups.put(rs.getString("attributes").replace("\"", ""), rs.getInt("id"));
+                            String attributes = rs.getString("attributes");
+                            ldapGroups.put(attributes == null ? null : attributes.replace("\"", ""), rs.getInt("id"));
                         } catch (SQLException e) {
                             log.error(e.getMessage());
                         }
@@ -343,13 +405,13 @@ public class UserRepositoryImpl implements UserRepository {
 
         String subQuery = "select u.*, s.id as steward_id from usermgmt.platform_users u left join da_" + userDetails.getTenant()
                 + ".steward s on u.uid = s.user_id where u.tenant = '" + userDetails.getTenant() + "' ";
-        String queryForItems = "SELECT tbl1.* FROM (" + subQuery + ") as tbl1 " + join
+        String queryForItems = "SELECT * FROM (SELECT rr.*, (SELECT string_agg(t.name,', ') FROM unnest(rr.user_roles) role_id JOIN usermgmt.user_roles t ON role_id=CAST(t.id AS TEXT) ) AS user_role_names FROM (" + subQuery + ") as rr) as tbl1 " + join
                 + where + " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
                 + searchRequest.getLimit();
 
-        List<UserDetails> items = jdbcTemplate.query(queryForItems, new UserDetailsRowMapper(), vals.toArray());
+        List<UserDetails> items = jdbcTemplate.query(queryForItems, new UserDetailsRowMapper2(), vals.toArray());
 
-        String queryForTotal = "SELECT COUNT(tbl1.uid) FROM (select * from usermgmt.platform_users where tenant='" + userDetails.getTenant() + "') tbl1 " + join
+        String queryForTotal = "SELECT COUNT(tbl1.uid) FROM (select pu.*, (SELECT string_agg(t.name,', ') FROM unnest(pu.user_roles) role_id JOIN usermgmt.user_roles t ON role_id=CAST(t.id AS TEXT) ) AS user_role_names from usermgmt.platform_users pu where tenant='" + userDetails.getTenant() + "') tbl1 " + join
                 /*+ " LEFT JOIN usermgmt.user_roles user_roles ON user_roles.id::text = any(tbl1.user_roles) "*/
                 + where;
         Long total = jdbcTemplate.queryForObject(queryForTotal, Long.class, vals.toArray());
@@ -466,14 +528,16 @@ public class UserRepositoryImpl implements UserRepository {
             where = ServiceUtils.appendWhereForSearchRequestWithJoin(where, searchRequest, searchableColumnsForJoin);
         }
 
-        String subQuery = "SELECT r.* FROM usermgmt.external_groups r where tenant = '" + userDetails.getTenant() + "'";
-        String queryForItems = "SELECT tbl1.* FROM (" + subQuery + ") tbl1 " + join
+        String subQuery = "SELECT r.*, array_to_string(r.permissions, ', ') as permission_names FROM usermgmt.external_groups r where tenant = '" + userDetails.getTenant() + "'";
+        String queryForItems = "SELECT tbl1.*, (SELECT string_agg(t.name,', ') FROM unnest(tbl1.user_roles) role_id "
+                + " JOIN usermgmt.user_roles t ON role_id=CAST(t.id AS TEXT) ) AS user_role_names FROM (" + subQuery + ") tbl1 " + join
                 + where + " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
                 + searchRequest.getLimit();
 
         List<ExternalGroup> items = jdbcTemplate.query(queryForItems, new ExternalGroupRowMapper(), vals.toArray());
 
-        String queryForTotal = "SELECT COUNT(tbl1.id) FROM (" + subQuery + ") tbl1 " + join
+        String queryForTotal = "SELECT COUNT(tbl1.id) FROM (SELECT tbl2.*, (SELECT string_agg(t.name,', ') FROM unnest(tbl2.user_roles) role_id "
+                + " JOIN usermgmt.user_roles t ON role_id=CAST(t.id AS TEXT) ) AS user_role_names FROM (" + subQuery + ") tbl2) tbl1 " + join
                 + where;
         final int[] count = {0};
         jdbcTemplate.query(
@@ -666,6 +730,12 @@ public class UserRepositoryImpl implements UserRepository {
                         UUID.randomUUID(), Integer.parseInt(userId), UUID.fromString(did), ts, userDetails.getUid(), ts, userDetails.getUid());
             }
         }
+
+        if (updatableUserDetails.getIsSteward()) {
+
+        } else {
+
+        }
     }
 
     private java.sql.Array createStringSqlArray(List<String> list){
@@ -763,8 +833,11 @@ public class UserRepositoryImpl implements UserRepository {
     }
 
     @Override
-    public Boolean existsUserByUsername(String username, UserDetails userDetails) {
-        return jdbcTemplate.queryForObject("SELECT EXISTS (SELECT UID FROM usermgmt.platform_users WHERE username=? AND tenant=?) AS EXISTS",
+    public Boolean existsUserByUsername(String username, Integer exceptId, UserDetails userDetails) {
+        log.info("existsUserByUsername " + username + " " + exceptId);
+        return jdbcTemplate.queryForObject("SELECT EXISTS (SELECT UID FROM usermgmt.platform_users WHERE username=? AND tenant=? "
+                        + (exceptId != null ? (" AND UID <> " + exceptId) : "")
+                        + ") AS EXISTS",
                 Boolean.class, username, userDetails.getTenant());
     }
 
@@ -797,5 +870,57 @@ public class UserRepositoryImpl implements UserRepository {
 
         return jdbcTemplate.update("UPDATE usermgmt.platform_users SET password_hash=? WHERE uid=?",
                 passwordEncoder.encode(updatableUserPassword.getNewPassword()), Integer.parseInt(userDetails.getUid())) > 0;
+    }
+
+    @Override
+    public void deleteSteward(String stewardId, UserDetails userDetails) {
+        jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".steward WHERE id=?", UUID.fromString(stewardId));
+    }
+
+    @Override
+    public void createStewardForUser(String userId, UpdatableUserDetails user, UserDetails userDetails) {
+        LocalDateTime now = LocalDateTime.now();
+
+        UUID stewardId = UUID.randomUUID();
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".steward (id, name, user_id, history_start, " +
+                "history_end, created, creator, modified, modifier) VALUES (?,?,?,?,?,?,?,?,?)",
+                stewardId, user.getDisplayName(), Integer.parseInt(userId), now, now, now, userDetails.getUid(), now, userDetails.getUid());
+
+        if (user.getStewardDomains() != null) {
+            for (String domainId : user.getStewardDomains()) {
+                jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".steward_to_domain (id, domain_id," +
+                        "steward_id, created, creator, modified, modifier) VALUES (?,?,?,?,?,?,?)", UUID.randomUUID(),
+                        UUID.fromString(domainId), stewardId, now, userDetails.getUid(), now, userDetails.getUid());
+            }
+        }
+    }
+
+    @Override
+    public void updateStewardForUser(String userId, UpdatableUserDetails user, UserDetails userDetails) {
+        LocalDateTime now = LocalDateTime.now();
+
+        String stewardId = jdbcTemplate.queryForObject("SELECT id FROM da_" + userDetails.getTenant() +
+                ".steward WHERE user_id=?", String.class, Integer.parseInt(userId));
+        if (stewardId != null) {
+            List<String> currDomainIds = jdbcTemplate.queryForList("SELECT domain_id FROM da_" + userDetails.getTenant()
+                    + ".steward_to_domain WHERE steward_id=?", String.class, UUID.fromString(stewardId));
+            for (String domainId : currDomainIds) {
+                if (user.getStewardDomains() == null || !user.getStewardDomains().contains(domainId)) {
+                    jdbcTemplate.update("DELETE FROM da_" + userDetails.getTenant() + ".steward_to_domain WHERE " +
+                            "domain_id=? AND steward_id=?", UUID.fromString(domainId), UUID.fromString(stewardId));
+                }
+            }
+
+            if (user.getStewardDomains() != null) {
+                for (String domainId : user.getStewardDomains()) {
+                    if (!currDomainIds.contains(domainId)) {
+                        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".steward_to_domain (id," +
+                                        " domain_id, steward_id, created, creator, modified, modifier) VALUES (?,?,?,?,?,?,?)",
+                                UUID.randomUUID(), UUID.fromString(domainId), UUID.fromString(stewardId), now,
+                                userDetails.getUid(), now, userDetails.getUid());
+                    }
+                }
+            }
+        }
     }
 }

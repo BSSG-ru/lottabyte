@@ -32,6 +32,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class SystemConnectionRepository extends GenericArtifactRepository<SystemConnection> {
@@ -143,7 +145,7 @@ public class SystemConnectionRepository extends GenericArtifactRepository<System
 
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".system_connection " +
                 "(id, \"name\", description, connector_id, system_id, enabled, created, creator, modified, modifier) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                systemConnectionId, updatableSystemConnectionEntity.getName(), updatableSystemConnectionEntity.getDescription(), UUID.fromString(updatableSystemConnectionEntity.getConnectorId()), UUID.fromString(updatableSystemConnectionEntity.getSystemId()),
+                systemConnectionId, updatableSystemConnectionEntity.getName(), updatableSystemConnectionEntity.getDescription(), UUID.fromString(updatableSystemConnectionEntity.getConnectorId()), updatableSystemConnectionEntity.getSystemId() == null ? null : UUID.fromString(updatableSystemConnectionEntity.getSystemId()),
                 updatableSystemConnectionEntity.getEnabled(), systemConnection.getCreatedAt(), systemConnection.getCreatedBy(),
                 systemConnection.getModifiedAt(), systemConnection.getModifiedBy());
 

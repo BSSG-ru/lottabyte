@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import ru.bssg.lottabyte.core.model.ArtifactState;
 import ru.bssg.lottabyte.core.model.FlatModeledObject;
+import ru.bssg.lottabyte.core.model.IFlatModeledObjectWithTags;
 import ru.bssg.lottabyte.core.model.ca.CustomAttribute;
 
 import java.util.List;
@@ -14,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @ToString(callSuper=true)
 @EqualsAndHashCode(callSuper=false)
-public class FlatDataAsset extends FlatModeledObject {
+public class FlatDataAsset extends FlatModeledObject implements IFlatModeledObjectWithTags {
     private String systemId;
     private String domainId;
     private String entityId;
@@ -31,6 +32,7 @@ public class FlatDataAsset extends FlatModeledObject {
     private String workflowState;
     private String workflowTaskId;
     private List<String> tags;
+    private String techName;
 
     public FlatDataAsset(DataAsset da) {
         super(da.getFlatModeledObject());

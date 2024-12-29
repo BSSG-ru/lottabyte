@@ -44,6 +44,7 @@ import ru.bssg.lottabyte.core.ui.model.SearchResponse;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.model.DeploymentResponse;
 import ru.bssg.lottabyte.coreapi.service.WorkflowService;
 
 import javax.servlet.http.HttpServletRequest;
@@ -180,6 +181,7 @@ public class WorkflowController {
             @ApiImplicitParam(name = "file", dataType = "file", paramType = "form", required = true)
     })
     @PostMapping(value = "/repository/deployments", produces = "application/json", consumes = "multipart/form-data")
+
     public DeploymentResponse uploadDeployment(@ApiParam(name = "deploymentKey") @RequestParam(value = "deploymentKey", required = false) String deploymentKey,
                                                @ApiParam(name = "deploymentName") @RequestParam(value = "deploymentName", required = false) String deploymentName,
                                                @ApiParam(name = "tenantId") @RequestParam(value = "tenantId", required = false) String tenantId,

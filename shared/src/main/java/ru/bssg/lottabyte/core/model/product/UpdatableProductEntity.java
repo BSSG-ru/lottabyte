@@ -25,6 +25,9 @@ public class UpdatableProductEntity extends ProductEntity {
         if (fromCopy.getIndicatorIds() != null) {
             this.setIndicatorIds(new ArrayList<>(fromCopy.getIndicatorIds()));
         }
+        if (fromCopy.getProductIds() != null) {
+            this.setProductIds(new ArrayList<>(fromCopy.getProductIds()));
+        }
         if (fromCopy.getEntityAttributeIds() != null) {
             this.setEntityAttributeIds(new ArrayList<>(fromCopy.getEntityAttributeIds()));
         }
@@ -43,6 +46,8 @@ public class UpdatableProductEntity extends ProductEntity {
         this.setLimits(fromCopy.getLimits());
         this.setLimits_internal(fromCopy.getLimits_internal());
         this.setRoles(fromCopy.getRoles());
+        this.setTermLinkIds(fromCopy.getTermLinkIds());
+        this.setShortDescription(fromCopy.getShortDescription());
     }
 
 }

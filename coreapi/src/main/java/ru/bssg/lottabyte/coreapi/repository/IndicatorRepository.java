@@ -34,6 +34,8 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class IndicatorRepository extends WorkflowableRepository<Indicator> {
@@ -53,6 +55,7 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
             IndicatorEntity indicatorEntity = new IndicatorEntity();
             indicatorEntity.setName(rs.getString("name"));
             indicatorEntity.setDescription(rs.getString("description"));
+            indicatorEntity.setShortDescription(rs.getString("short_description"));
             indicatorEntity.setCalcCode(rs.getString("calc_code"));
             indicatorEntity.setFormula(rs.getString("formula"));
             indicatorEntity.setDomainId(rs.getString("domain_id"));
@@ -96,6 +99,7 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
             fi.setId(rs.getString("id"));
             fi.setName(rs.getString("name"));
             fi.setDescription(rs.getString("description"));
+            fi.setShortDescription(rs.getString("short_description"));
             fi.setVersionId(rs.getInt("version_id"));
             fi.setModified(rs.getTimestamp("modified").toLocalDateTime());
             fi.setCalcCode(rs.getString("calc_code"));
@@ -124,7 +128,7 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
 
     public Map<String, List<DataEntityAttributeEntity>> getEntityAttributesByIndicatorId(String indicatorId,
             UserDetails userDetails) {
-        return jdbcTemplate.query("SELECT ea.id as ea_id, ea.name as ea_name, e.id as e_id, e.name as e_name \n" +
+        return jdbcTemplate.query("SELECT DISTINCT ea.id as ea_id, ea.name as ea_name, e.id as e_id, e.name as e_name \n" +
                 "FROM da_" + userDetails.getTenant() + ".\"indicator\" i \n" +
                 "join da_" + userDetails.getTenant()
                 + ".reference r1 on r1.source_id=i.id and r1.target_artifact_type='data_asset' \n" +
@@ -155,11 +159,19 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
                 }, UUID.fromString(indicatorId));
     }
 
-    public List<String> entityAttributeExistInAllFormulas(String entityAttributeId, UserDetails userDetails) {
-        return jdbcTemplate.queryForList(
-                "SELECT id FROM da_" + userDetails.getTenant()
+    public List<Indicator> entityAttributeExistInAllFormulas(String entityAttributeId, UserDetails userDetails) {
+        return jdbcTemplate.query(
+                "SELECT * FROM da_" + userDetails.getTenant()
                         + ".indicator WHERE state='PUBLISHED' AND formula like '%" + entityAttributeId + "%'",
-                String.class);
+                new RowMapper<Indicator>() {
+                    @Override
+                    public Indicator mapRow(ResultSet rs, int rowNum) throws SQLException {
+                        IndicatorEntity e = new IndicatorEntity();
+                        e.setId(rs.getString("id"));
+                        e.setName(rs.getString("name"));
+                        return new Indicator(e, new WorkflowableMetadata(rs, e.getArtifactType()));
+                    }
+                });
     }
 
     public List<String> indicatorExistInAllFormulas(String indicatorId, UserDetails userDetails) {
@@ -187,11 +199,11 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
             dqChecksString = String.join(",", newIndicatorEntity.getDqChecks());
 
         String query = "INSERT INTO da_" + userDetails.getTenant() + ".\"indicator\" " +
-                "(id, \"name\", description, calc_code, dq_checks, state, workflow_task_id, created, creator, modified, modifier, formula, domain_id, indicator_type_id, examples, link, datatype_id, limits, limits_internal, roles) "
+                "(id, \"name\", description, short_description, calc_code, dq_checks, state, workflow_task_id, created, creator, modified, modifier, formula, domain_id, indicator_type_id, examples, link, datatype_id, limits, limits_internal, roles) "
                 +
-                "VALUES(?, ?, ?, ?, string_to_array(?,','), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "VALUES(?, ?, ?, ?, ?, string_to_array(?,','), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         jdbcTemplate.update(query, newId, newIndicatorEntity.getName(), newIndicatorEntity.getDescription(),
-                newIndicatorEntity.getCalcCode(),
+                newIndicatorEntity.getShortDescription(), newIndicatorEntity.getCalcCode(),
                 dqChecksString,
                 ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
@@ -204,7 +216,7 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
         return newId.toString();
     }
 
-    public void patchIndicator(String indicatorId, UpdatableIndicatorEntity indicatorEntity, UserDetails userDetails)
+    public void patchIndicator(String indicatorId, UpdatableIndicatorEntity indicatorEntity, boolean updateNulls, UserDetails userDetails)
             throws LottabyteException {
         List<String> sets = new ArrayList<>();
         List<Object> params = new ArrayList<>();
@@ -212,57 +224,64 @@ public class IndicatorRepository extends WorkflowableRepository<Indicator> {
         String query = "UPDATE da_" + userDetails.getTenant() + ".\"indicator\" SET modifier = ?, modified = ?";
         params.add(userDetails.getUid());
         params.add(new Timestamp(new java.util.Date().getTime()));
-        if (indicatorEntity.getName() != null) {
+        if (updateNulls || indicatorEntity.getName() != null) {
             sets.add("\"name\" = ?");
             params.add(indicatorEntity.getName());
         }
-        if (indicatorEntity.getDescription() != null) {
+        if (updateNulls || indicatorEntity.getDescription() != null) {
             sets.add("description = ?");
             params.add(indicatorEntity.getDescription());
         }
-        if (indicatorEntity.getCalcCode() != null) {
+        if (updateNulls || indicatorEntity.getShortDescription() != null) {
+            sets.add("short_description = ?");
+            params.add(indicatorEntity.getShortDescription());
+        }
+        if (updateNulls || indicatorEntity.getCalcCode() != null) {
             sets.add("calc_code = ?");
             params.add(indicatorEntity.getCalcCode());
         }
-        if (indicatorEntity.getDqChecks() != null) {
+        if (updateNulls || indicatorEntity.getDqChecks() != null) {
             sets.add("dq_checks = string_to_array(?,',')");
-            String dqChecksString = String.join(",", indicatorEntity.getDqChecks());
-            params.add(dqChecksString);
+            if (indicatorEntity.getDqChecks() == null)
+                params.add(null);
+            else {
+                String dqChecksString = String.join(",", indicatorEntity.getDqChecks());
+                params.add(dqChecksString);
+            }
         }
-        if (indicatorEntity.getFormula() != null) {
+        if (updateNulls || indicatorEntity.getFormula() != null) {
             sets.add("formula = ?");
             params.add(indicatorEntity.getFormula());
         }
-        if (indicatorEntity.getDomainId() != null) {
-
+        if (updateNulls || indicatorEntity.getDomainId() != null) {
             sets.add("domain_id = ?");
-            params.add(indicatorEntity.getDomainId().isEmpty() ? null : UUID.fromString(indicatorEntity.getDomainId()));
+            params.add((indicatorEntity.getDomainId() == null || indicatorEntity.getDomainId().isEmpty()) ? null : UUID.fromString(indicatorEntity.getDomainId()));
         }
-        if (indicatorEntity.getIndicatorTypeId() != null) {
+        if (updateNulls || indicatorEntity.getIndicatorTypeId() != null) {
             sets.add("indicator_type_id = ?");
-            params.add(UUID.fromString(indicatorEntity.getIndicatorTypeId()));
+            params.add((indicatorEntity.getIndicatorTypeId() == null || indicatorEntity.getIndicatorTypeId().isEmpty()) ? null : UUID.fromString(indicatorEntity.getIndicatorTypeId()));
         }
-        if (indicatorEntity.getExamples() != null) {
+        if (updateNulls || indicatorEntity.getExamples() != null) {
             sets.add("examples = ?");
             params.add(indicatorEntity.getExamples());
         }
-        if (indicatorEntity.getLink() != null) {
+        if (updateNulls || indicatorEntity.getLink() != null) {
             sets.add("link = ?");
             params.add(indicatorEntity.getLink());
         }
-        if (indicatorEntity.getDatatypeId() != null) {
+        if (updateNulls || indicatorEntity.getDatatypeId() != null) {
             sets.add("datatype_id = ?");
-            params.add(indicatorEntity.getDatatypeId() == null ? null : UUID.fromString(indicatorEntity.getDatatypeId()));
+            params.add((indicatorEntity.getDatatypeId() == null || indicatorEntity.getDatatypeId().isEmpty())? null : UUID.fromString(indicatorEntity.getDatatypeId()));
         }
-        if (indicatorEntity.getLimits() != null) {
+        if (updateNulls || indicatorEntity.getLimits() != null) {
             sets.add("limits = ?");
             params.add(indicatorEntity.getLimits());
         }
-        if (indicatorEntity.getLimits_internal() != null) {
+        if (updateNulls || indicatorEntity.getLimits_internal() != null) {
             sets.add("limits_internal = ?");
             params.add(indicatorEntity.getLimits_internal());
         }
-        if (indicatorEntity.getRoles() != null) {
+        if (updateNulls || indicatorEntity.getRoles() != null) {
             sets.add("roles = ?");
             params.add(indicatorEntity.getRoles());
         }

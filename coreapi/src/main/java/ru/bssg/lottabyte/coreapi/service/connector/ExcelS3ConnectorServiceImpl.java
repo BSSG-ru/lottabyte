@@ -33,6 +33,7 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 
 
 import java.io.*;
+import java.sql.SQLException;
 import java.util.*;
 
 @Service
@@ -189,4 +190,5 @@ public class ExcelS3ConnectorServiceImpl implements IConnectorService {
         }
         return String.valueOf(jsonBody);
     }
+
 }

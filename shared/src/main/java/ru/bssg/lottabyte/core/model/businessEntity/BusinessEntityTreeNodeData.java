@@ -19,4 +19,5 @@ public class BusinessEntityTreeNodeData {
     private String modified;
     private String workflowState;
     private String tags;
+    private Boolean isInFav;
 }

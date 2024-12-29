@@ -16,16 +16,17 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.model.ArtifactState;
+import ru.bssg.lottabyte.core.model.metaDatabase.FlatMetaDatabase;
 import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
+import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
 import ru.bssg.lottabyte.coreapi.service.*;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.io.IOException;
+import java.util.*;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES_STRICT;
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
@@ -55,6 +56,7 @@ public class ElasticsearchController {
     private final EntityQueryService queryService;
     private final IndicatorService indicatorService;
     private final BusinessEntityService businessEntityService;
+    private final MetadataService metadataService;
 
     @Operation(
             security = @SecurityRequirement(name = "bearerAuth"),
@@ -119,13 +121,17 @@ public class ElasticsearchController {
     @Secured(roles = {"elastic_search_r", "elastic_search_u"}, level = ALL_ROLES_STRICT)
     public void insertAllSearchableArtifact(
             @RequestHeader HttpHeaders headers
-    ) throws LottabyteException {
+    ) throws LottabyteException, IOException {
         String token = HttpUtils.getToken(headers);
         UserDetails userDetail = jwtHelper.getUserDetail(token);
+
+        elasticsearchService.deleteAllDocumentFromIndexElasticSearch("da_" + userDetail.getTenant(), userDetail);
 
         List<SearchableArtifact> searchableArtifactList = new ArrayList<>();
 
         domainService.getDomainsPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
+                .forEach(x -> searchableArtifactList.add(domainService.getSearchableArtifact(x, userDetail)));
+        domainService.getDomainsPaginated(0, 10000, ArtifactState.ARCHIVED.name(), userDetail).getResources()
                 .forEach(x -> searchableArtifactList.add(domainService.getSearchableArtifact(x, userDetail)));
         systemService.getSystemsPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
                 .forEach(x -> searchableArtifactList.add(systemService.getSearchableArtifact(x, userDetail)));
@@ -157,7 +163,19 @@ public class ElasticsearchController {
                 });
         productService.getAllProductsPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
                 .forEach(x -> searchableArtifactList.add(productService.getSearchableArtifact(x, userDetail)));
-        
+
+        SearchRequestWithJoin req = new SearchRequestWithJoin();
+        req.setFilters(new ArrayList<>());
+        req.setFiltersForJoin(new ArrayList<>());
+        req.setSort("name+");
+        req.setOffset(0);
+        req.setLimit(999999);
+        req.setGlobalQuery("");
+        //List<FlatMetaDatabase> dbs = metadataService.searchMetaDatabases(req, userDetail).getItems();
+        metadataService.searchMetaDatabases(req, userDetail).getItems().forEach(x -> searchableArtifactList.add(metadataService.getSearchableArtifact(x, userDetail)));
+        //metadataService.searchMetaObjects(req, userDetail).getItems().forEach(x -> elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(x.getId()), userDetail));
+        //metadataService.searchMetaColumns(req, userDetail).getItems().forEach(x -> elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(x.getId()), userDetail));
+
         elasticsearchService.insertElasticSearchEntity(searchableArtifactList, userDetail);
     }
 
@@ -226,11 +244,11 @@ public class ElasticsearchController {
             @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal Server error")
     })
-    @RequestMapping(value = "/all", method = RequestMethod.DELETE, produces = { "application/json"})
+    @RequestMapping(value = "/all/{indexName}", method = RequestMethod.DELETE, produces = { "application/json"})
     @Secured(roles = {"elastic_search_r", "elastic_search_u"}, level = ALL_ROLES_STRICT)
     public void deleteAllDocumentFromIndexElasticSearch(
             @Parameter(description = "indexName",example = "category")
-            @RequestParam(value="indexName", defaultValue = "category") String indexName,
+            @PathVariable("indexName") String indexName,
             @RequestHeader HttpHeaders headers
     ) throws Exception {
         String token = HttpUtils.getToken(headers);

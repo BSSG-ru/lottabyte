@@ -23,6 +23,7 @@ import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
 import ru.bssg.lottabyte.core.model.domain.Domain;
 import ru.bssg.lottabyte.core.model.domain.FlatDomain;
 import ru.bssg.lottabyte.core.model.domain.UpdatableDomainEntity;
+import ru.bssg.lottabyte.core.model.product.Product;
 import ru.bssg.lottabyte.core.ui.model.SearchRequest;
 import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
 import ru.bssg.lottabyte.core.ui.model.SearchResponse;
@@ -118,6 +119,26 @@ public class DomainController {
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
 
+    @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Restores Domain version by given guid and version id.", description = "This method can be used to restore Domain history version by given guid and version id.", operationId = "getDomainVersionById")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Operation successfully"),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "Product version not found"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/{domain_id}/versions/{version_id}/restore", method = RequestMethod.POST, produces = {
+            "application/json" })
+    @Secured(roles = { "domain_u" }, level = ANY_ROLE)
+    public ResponseEntity<Domain> restoreDomainVersionById(
+            @Parameter(description = "ID of the Domain", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("domain_id") String domainId,
+            @Parameter(description = "Version ID of the Domain", example = "1") @PathVariable("version_id") Integer versionId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+        return ResponseEntity.ok(domainService.restoreDomainVersionById(domainId, versionId,
+                jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+    }
+
     @Operation(
             security = @SecurityRequirement(name = "bearerAuth"),
             summary = "Gets Domain versions list by domain guid.",
@@ -136,7 +157,7 @@ public class DomainController {
     public ResponseEntity<PaginatedArtifactList<Domain>> getDomainVersionsById(
             @PathVariable("domain_id") String domainId,
             @Parameter(description = "The maximum number of Domain versions to return - must be at least 1 and cannot exceed 200. The default value is 10.")
-            @RequestParam(value="limit", defaultValue = "10") Integer limit,
+            @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
@@ -217,7 +238,7 @@ public class DomainController {
             @RequestBody UpdatableDomainEntity domainEntity,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
 
-        Domain d = domainService.updateDomain(domainId, domainEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        Domain d = domainService.updateDomain(domainId, domainEntity, false, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
 
@@ -252,6 +273,62 @@ public class DomainController {
         }
     }
 
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Archives Domain by given guid.",
+            description = "This method can be used to archive Domain by given guid.",
+            operationId = "archiveDomain"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Domain has been archived successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/archive/{domain_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"domain_r", "domain_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<?> archiveDomain(
+            @Parameter(description = "ID of the Domain",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("domain_id") String domainId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        Domain result = domainService.archiveDomainById(domainId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        if (result == null) {
+            ArchiveResponse resp = new ArchiveResponse();
+            resp.setDeletedGuids(Collections.singletonList(domainId));
+            return ResponseEntity.ok(resp);
+        } else {
+            return ResponseEntity.ok(result);
+        }
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Restores Domain by given guid.",
+            description = "This method can be used to restore Domain by given guid.",
+            operationId = "restoreDomain"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Domain has been restored successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/restore/{domain_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"domain_r", "domain_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<Domain> restoreDomain(
+            @Parameter(description = "ID of the Domain",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("domain_id") String domainId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        Domain result = domainService.restoreDomainById(domainId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        return new ResponseEntity<>(result, HttpStatus.OK);
+    }
+
     @Hidden
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"domain_r"}, level = ANY_ROLE)
@@ -262,5 +339,22 @@ public class DomainController {
         return ResponseEntity.ok(domainService.searchDomains(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
+    @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Gets domain responsibles list by guid.", description = "This method can be used to get domain responsibles by given guid.", operationId = "getProductResponsiblesById")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Result has been retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/{domain_id}/responsibles", method = RequestMethod.GET, produces = { "application/json" })
+    @Secured(roles = { "domain_r" }, level = ANY_ROLE)
+    public ResponseEntity<List<UserDetails>> getResponsiblesById(
+            @PathVariable("domain_id") String domainId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
 
+        List<UserDetails> list = domainService.getResponsibles(
+                domainId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        return new ResponseEntity<>(list, HttpStatus.OK);
+    }
 }

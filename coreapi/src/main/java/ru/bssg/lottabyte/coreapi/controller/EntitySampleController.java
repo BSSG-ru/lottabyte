@@ -100,12 +100,6 @@ public class EntitySampleController {
                         @RequestParam(value = "tenant_id", defaultValue = "999") Integer tenantId,
                         @RequestParam(value = "as_file", defaultValue = "false") Boolean asFile,
                         @RequestHeader HttpHeaders headers) throws LottabyteException {
-                /*
-                 * String token =
-                 * Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).
-                 * replace("Bearer ","");
-                 * UserDetails userDetails = jwtHelper.getUserDetail(token);
-                 */
                 UserDetails userDetails = new UserDetails();
                 userDetails.setTenant(tenantId.toString());
 
@@ -534,7 +528,7 @@ public class EntitySampleController {
         @RequestMapping(value = "/{sample_id}/versions", method = RequestMethod.GET, produces = { "application/json" })
         public ResponseEntity<PaginatedArtifactList<EntitySample>> getEntitySampleVersions(
                         @PathVariable("sample_id") String sampleId,
-                        @Parameter(description = "The maximum number of Entity Sample versions to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "10") Integer limit,
+                        @Parameter(description = "The maximum number of Entity Sample versions to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "1000") Integer limit,
                         @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
                         @RequestHeader HttpHeaders headers) throws LottabyteException {
 

@@ -17,6 +17,7 @@ public class EntitySamplePropertyEntity extends Entity {
     private String entitySampleId;
     private String type;
     private List<String> mappedAttributeIds;
+    private String mappedMetaColumnId;
 
     public EntitySamplePropertyEntity() {
         super(ArtifactType.entity_sample_property);

@@ -18,5 +18,6 @@ public class UpdatableUserDetails {
     private List<String> permissions;
     private List<String> userRolesIds;
     private List<String> userDomains;
-
+    private Boolean isSteward;
+    private List<String> stewardDomains;
 }

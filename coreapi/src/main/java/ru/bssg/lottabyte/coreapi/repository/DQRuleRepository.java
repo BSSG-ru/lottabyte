@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class DQRuleRepository extends WorkflowableRepository<DQRule> {
@@ -55,6 +57,7 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
             DQRuleEntity dqruleEntity = new DQRuleEntity();
             dqruleEntity.setName(rs.getString("name"));
             dqruleEntity.setDescription(rs.getString("description"));
+            dqruleEntity.setShortDescription(rs.getString("short_description"));
             dqruleEntity.setRuleRef(rs.getString("rule_ref"));
             dqruleEntity.setSettings(rs.getString("settings"));
             dqruleEntity.setRuleTypeId(rs.getString("rule_type_id"));
@@ -116,7 +119,7 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
     public boolean existsInLog(String ruleId, UserDetails userDetails) {
         Integer c = jdbcTemplate.queryForObject(
                 "SELECT COUNT(id) FROM da_" + userDetails.getTenant() + ".dq_log WHERE rule_id=?",
-                Integer.class, UUID.fromString(ruleId));
+                Integer.class, ruleId);
         return c > 0;
     }
 
@@ -125,8 +128,8 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
         UUID newId = dqRule.getId() != null ? UUID.fromString(dqRule.getId()) : UUID.randomUUID();
         Timestamp ts = new Timestamp(new java.util.Date().getTime());
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                + ".dq_rule (id, name, description,rule_ref, state, workflow_task_id, created, creator, modified, modifier,settings,rule_type_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                newId, dqRule.getName(), dqRule.getDescription(), dqRule.getRuleRef(),
+                + ".dq_rule (id, name, description, short_description, rule_ref, state, workflow_task_id, created, creator, modified, modifier,settings,rule_type_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                newId, dqRule.getName(), dqRule.getDescription(), dqRule.getShortDescription(), dqRule.getRuleRef(),
                 ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
                 ts, userDetails.getUid(), ts, userDetails.getUid(), dqRule.getSettings(),
@@ -137,9 +140,8 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
     public String createDQRuleDraft(String publishedDQRuleId, String draftId, String workflowTaskId, UserDetails userDetails) {
         UUID newId = draftId != null ? UUID.fromString(draftId) : UUID.randomUUID();
         jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                + ".dq_rule (id, name, description,rule_ref, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier,settings,rule_type_id) "
-                +
-                "SELECT ?, name, description,rule_ref, ?, ?, id, version_id, created, creator, modified, modifier,settings,rule_type_id FROM da_"
+                + ".dq_rule (id, name, description, short_description, rule_ref, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier,settings,rule_type_id) "
+                + "SELECT ?, name, description, short_description, rule_ref, ?, ?, id, version_id, created, creator, modified, modifier,settings,rule_type_id FROM da_"
                 + userDetails.getTenant() + ".dq_rule where id = ?",
                 newId, ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
@@ -152,18 +154,18 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
         if (publishedDQRuleId != null) {
             jdbcTemplate.update(
                     "UPDATE da_" + userDetails.getTenant()
-                            + ".dq_rule d SET name = draft.name, description = draft.description, rule_type_id = draft.rule_type_id,rule_ref = draft.rule_ref, settings = draft.settings, "
+                            + ".dq_rule d SET name = draft.name, description = draft.description, short_description = draft.short_description, rule_type_id = draft.rule_type_id,rule_ref = draft.rule_ref, settings = draft.settings, "
                             + " ancestor_draft_id = draft.id, modified = draft.modified, modifier = draft.modifier "
-                            + " from (select id, name, description,rule_ref, modified, modifier,settings,rule_type_id FROM da_"
+                            + " from (select id, name, description, short_description, rule_ref, modified, modifier,settings,rule_type_id FROM da_"
                             + userDetails.getTenant() + ".dq_rule) as draft where d.id = ? and draft.id = ?",
                     UUID.fromString(publishedDQRuleId), UUID.fromString(draftDQRuleId));
             res = publishedDQRuleId;
         } else {
             UUID newId = UUID.randomUUID();
             jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant()
-                    + ".dq_rule (id, name, description,rule_ref, state, workflow_task_id, "
+                    + ".dq_rule (id, name, description, short_description, rule_ref, state, workflow_task_id, "
                     + "published_id, published_version_id, ancestor_draft_id, created, creator, modified, modifier,settings,rule_type_id) "
-                    + "SELECT ?, name, description,rule_ref, ?, ?, ?, ?, ?, created, creator, modified, modifier,settings,rule_type_id "
+                    + "SELECT ?, name, description, short_Description, rule_ref, ?, ?, ?, ?, ?, created, creator, modified, modifier,settings,rule_type_id "
                     + "FROM da_" + userDetails.getTenant() + ".dq_rule where id = ?",
                     newId, ArtifactState.PUBLISHED.toString(), null, null, null,
                     UUID.fromString(draftDQRuleId), UUID.fromString(draftDQRuleId));
@@ -176,7 +178,7 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
         return res;
     }
 
-    public DQRule updateDQRule(String dqRuleId, UpdatableDQRuleEntity dqRuleIEntity, UserDetails userDetails)
+    public DQRule updateDQRule(String dqRuleId, UpdatableDQRuleEntity dqRuleIEntity, boolean updateNulls, UserDetails userDetails)
             throws LottabyteException {
         DQRule d = new DQRule(dqRuleIEntity);
         d.setId(dqRuleId);
@@ -186,25 +188,29 @@ public class DQRuleRepository extends WorkflowableRepository<DQRule> {
         List<String> sets = new ArrayList<>();
         List<Object> args = new ArrayList<>();
 
-        if (dqRuleIEntity.getName() != null) {
+        if (updateNulls || dqRuleIEntity.getName() != null) {
             sets.add("name=?");
             args.add(dqRuleIEntity.getName());
         }
-        if (dqRuleIEntity.getDescription() != null) {
+        if (updateNulls || dqRuleIEntity.getDescription() != null) {
             sets.add("description=?");
             args.add(dqRuleIEntity.getDescription());
         }
-        if (dqRuleIEntity.getRuleRef() != null) {
+        if (updateNulls || dqRuleIEntity.getShortDescription() != null) {
+            sets.add("short_description=?");
+            args.add(dqRuleIEntity.getShortDescription());
+        }
+        if (updateNulls || dqRuleIEntity.getRuleRef() != null) {
             sets.add("rule_ref=?");
             args.add(dqRuleIEntity.getRuleRef());
         }
-        if (dqRuleIEntity.getSettings() != null) {
+        if (updateNulls || dqRuleIEntity.getSettings() != null) {
             sets.add("settings=?");
             args.add(dqRuleIEntity.getSettings());
         }
-        if (dqRuleIEntity.getRuleTypeId() != null) {
+        if (updateNulls || dqRuleIEntity.getRuleTypeId() != null) {
             sets.add("rule_type_id=?");
-            args.add(dqRuleIEntity.getRuleTypeId() == null ? null : UUID.fromString(dqRuleIEntity.getRuleTypeId()));
+            args.add((dqRuleIEntity.getRuleTypeId() == null || dqRuleIEntity.getRuleTypeId().isEmpty())? null : UUID.fromString(dqRuleIEntity.getRuleTypeId()));
         }
         if (sets.size() > 0) {
             sets.add("modified=?");

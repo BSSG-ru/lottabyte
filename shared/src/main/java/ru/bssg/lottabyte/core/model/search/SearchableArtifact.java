@@ -24,10 +24,12 @@ public class SearchableArtifact {
     private Integer versionId;
     private String name;
     private String description;
+    private String shortDescription;
     private List<String> tags;
     private String modifiedBy;
     private LocalDateTime modifiedAt;
     private String artifactType;
+    private String artifactState;
     private LocalDateTime effectiveStartDate;
     private LocalDateTime effectiveEndDate;
     private List<SearchableCustomAttribute> customAttributes;

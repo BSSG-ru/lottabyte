@@ -1,4 +1,4 @@
-package ru.bssg.lottabyte.coreapi.controller;
+package ru.bssg.lottabyte.coreapi.model;
 
 import org.flowable.engine.repository.Deployment;
 

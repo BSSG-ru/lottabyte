@@ -12,6 +12,8 @@ import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.dataasset.DataAsset;
+import ru.bssg.lottabyte.core.model.domain.Domain;
+import ru.bssg.lottabyte.core.model.domain.UpdatableDomainEntity;
 import ru.bssg.lottabyte.core.model.system.*;
 import ru.bssg.lottabyte.core.model.system.System;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowTask;
@@ -49,10 +51,13 @@ public class SystemService extends WorkflowableService<System> {
     private final DataAssetRepository dataAssetRepository;
     private final ArtifactType serviceArtifactType = ArtifactType.system;
     private final WorkflowService workflowService;
+    private final ReferenceService referenceService;
+    private final UserFavService userFavService;
 
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("name", SearchColumn.ColumnType.Text),
             new SearchColumn("description", SearchColumn.ColumnType.Text),
+            new SearchColumn("short_description", SearchColumn.ColumnType.Text),
             new SearchColumn("domains", SearchColumn.ColumnType.Text),
             new SearchColumn("tags", SearchColumn.ColumnType.Text),
             new SearchColumn("modified", SearchColumn.ColumnType.Timestamp),
@@ -72,8 +77,9 @@ public class SystemService extends WorkflowableService<System> {
             TagService tagService, CommentService commentService,
             CustomAttributeDefinitionService customAttributeDefinitionService,
             DataAssetRepository dataAssetRepository, DomainService domainService,
-            WorkflowService workflowService) {
-        super(systemRepository, workflowService, tagService, ArtifactType.system, elasticsearchService);
+            WorkflowService workflowService, ReferenceService referenceService,
+             UserFavService userFavService) {
+        super(systemRepository, workflowService, tagService, ArtifactType.system, elasticsearchService, referenceService);
         this.systemRepository = systemRepository;
         this.connectorRepository = connectorRepository;
         this.elasticsearchService = elasticsearchService;
@@ -88,6 +94,8 @@ public class SystemService extends WorkflowableService<System> {
         this.dataAssetRepository = dataAssetRepository;
         this.domainService = domainService;
         this.workflowService = workflowService;
+        this.referenceService = referenceService;
+        this.userFavService = userFavService;
     }
 
     // WF interface
@@ -107,12 +115,29 @@ public class SystemService extends WorkflowableService<System> {
 
     @Override
     public String createDraft(String publishedId, WorkflowState workflowState, WorkflowType workflowType,
-            UserDetails userDetails) throws LottabyteException {
+                              UserDetails userDetails) throws LottabyteException {
+
         System current = getSystemById(publishedId, userDetails);
-        String draftId = super.createDraft(publishedId, null, workflowState, workflowType, userDetails);
+
+        ProcessInstance pi = null;
+        String workflowTaskId = null;
+        String draftId = UUID.randomUUID().toString();
+        if (workflowService.isWorkflowEnabled(serviceArtifactType) && workflowService
+                .getDefaultWorkflow(serviceArtifactType, WorkflowType.PUBLISH, userDetails) != null) {
+
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.UPDATE,
+                    userDetails);
+            workflowTaskId = pi.getId();
+
+        }
+        systemRepository.createDraftFromPublished(publishedId, draftId, workflowTaskId, userDetails);
+
         if (current.getEntity().getDomainIds() != null && !current.getEntity().getDomainIds().isEmpty())
             for (String d : current.getEntity().getDomainIds())
                 systemRepository.addSystemToDomain(draftId, d, userDetails);
+
+        tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
+
         return draftId;
     }
 
@@ -151,9 +176,39 @@ public class SystemService extends WorkflowableService<System> {
                     Message.LBE03006,
                             userDetails.getLanguage(),
                     serviceArtifactType, draftSystemId);
+        if (systemRepository.existEntitiesInSystem(publishedId, userDetails))
+            throw new LottabyteException(Message.LBE00912, userDetails.getLanguage());
+        if (entitySampleService.existSamplesInSystem(publishedId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00909, userDetails.getLanguage());
+        if (entityQueryService.existQueriesInSystem(publishedId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00910, userDetails.getLanguage());
+        if (systemConnectionService.existSystemConnectionsInSystem(publishedId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00911, userDetails.getLanguage());
+        if (dataAssetRepository.existsDataAssetWithSystem(publishedId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00918, userDetails.getLanguage());
         systemRepository.setStateById(current.getId(), ArtifactState.DRAFT_HISTORY, userDetails);
         systemRepository.setStateById(publishedId, ArtifactState.REMOVED, userDetails);
         elasticsearchService.deleteElasticSearchEntityById(Collections.singletonList(publishedId), userDetails);
+    }
+
+    public System wfSend(String draftId, UserDetails userDetails) throws LottabyteException {
+        System draft = systemRepository.getById(draftId, userDetails);
+        if (draft == null)
+            throw new LottabyteException(
+                    Message.LBE03004,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+
+        if (systemRepository.existsSystemInFolder(draft.getName(), draft.getEntity().getSystemFolderId(), null,
+                userDetails))
+            throw new LottabyteException(Message.LBE00901,
+                    userDetails.getLanguage(), draft.getName());
+
+        return draft;
     }
 
     public System wfPublish(String draftSystemId, UserDetails userDetails) throws LottabyteException {
@@ -249,6 +304,20 @@ public class SystemService extends WorkflowableService<System> {
          */
 
         fillSystemRelations(system, userDetails);
+        return system;
+    }
+
+    public System restoreSystemVersionById(String systemId, Integer versionId, UserDetails userDetails)
+            throws LottabyteException {
+        System systemVersion = getSystemVersionById(systemId, versionId, userDetails);
+        UpdatableSystemEntity systemVersionEntity = new UpdatableSystemEntity(systemVersion.getEntity());
+
+        System system = patchSystem(systemId, systemVersionEntity, userDetails);
+
+        WorkflowableMetadata versionMetadata = (WorkflowableMetadata)systemVersion.getMetadata();
+
+        tagService.mergeTags(versionMetadata.getAncestorDraftId() == null ? systemVersion.getId() : versionMetadata.getAncestorDraftId(), serviceArtifactType, system.getId(), serviceArtifactType, userDetails);
+
         return system;
     }
 
@@ -526,6 +595,9 @@ public class SystemService extends WorkflowableService<System> {
             // эта проверка больше не имеет смысла, либо удалить, либо добавить проверку на
             // PUBLISHED основной сущности
             // throw new LottabyteException(HttpStatus.BAD_REQUEST, Message.LBE00908);
+            if (existEntitiesInSystem(systemId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00912, userDetails.getLanguage());
             if (entitySampleService.existSamplesInSystem(systemId, userDetails))
                 throw new LottabyteException(
                         Message.LBE00909, userDetails.getLanguage());
@@ -545,8 +617,17 @@ public class SystemService extends WorkflowableService<System> {
                         Message.LBE00924,
                                 userDetails.getLanguage(),
                         draftId);
-            draftId = createDraftSystem(current, WorkflowState.MARKED_FOR_REMOVAL, userDetails);
-            return systemRepository.getById(draftId, userDetails);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.REMOVE, userDetails);
+            workflowTaskId = pi.getId();
+
+            systemRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            return getSystemById(draftId, userDetails);
         } else {
             systemRepository.removeSystemFromAllDomains(systemId, userDetails);
             tagService.deleteAllTagsByArtifactId(systemId, userDetails);
@@ -554,6 +635,105 @@ public class SystemService extends WorkflowableService<System> {
             customAttributeDefinitionService.deleteAllCustomAttributesByArtifactId(systemId, userDetails);
             systemRepository.deleteById(systemId, userDetails);
             return null;
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public System archiveSystemById(String systemId, UserDetails userDetails) throws LottabyteException {
+        if (!systemRepository.existsById(systemId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00904,
+                    userDetails.getLanguage(),
+                    systemId);
+        if (userDetails.getStewardId() != null && !systemRepository.hasAccessToSystem(systemId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00919,
+                    userDetails.getLanguage(),
+                    systemId);
+
+        System current = systemRepository.getById(systemId, userDetails);
+        if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+            if (existEntitiesInSystem(systemId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00912, userDetails.getLanguage());
+            if (entitySampleService.existSamplesInSystem(systemId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00909, userDetails.getLanguage());
+            if (entityQueryService.existQueriesInSystem(systemId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00910, userDetails.getLanguage());
+            if (systemConnectionService.existSystemConnectionsInSystem(systemId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00911, userDetails.getLanguage());
+            if (dataAssetRepository.existsDataAssetWithSystem(systemId, userDetails))
+                throw new LottabyteException(
+                        Message.LBE00918, userDetails.getLanguage());
+
+            String draftId = systemRepository.getDraftId(systemId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00924,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.ARCHIVE, userDetails);
+            workflowTaskId = pi.getId();
+
+            systemRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            return getSystemById(draftId, userDetails);
+        } else {
+            String draftId = systemRepository.getDraftId(systemId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public System restoreSystemById(String systemId, UserDetails userDetails) throws LottabyteException {
+        if (!systemRepository.existsById(systemId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00904,
+                    userDetails.getLanguage(),
+                    systemId);
+        if (userDetails.getStewardId() != null && !systemRepository.hasAccessToSystem(systemId, userDetails))
+            throw new LottabyteException(
+                    Message.LBE00919,
+                    userDetails.getLanguage(),
+                    systemId);
+
+        System current = systemRepository.getById(systemId, userDetails);
+        if (ArtifactState.ARCHIVED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+
+            String draftId = systemRepository.getDraftId(systemId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00924,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.RESTORE, userDetails);
+            workflowTaskId = pi.getId();
+
+            systemRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+
+            return getSystemById(draftId, userDetails);
+        } else {
+            String draftId = systemRepository.getDraftId(systemId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
         }
     }
 
@@ -690,6 +870,7 @@ public class SystemService extends WorkflowableService<System> {
                         .map(x -> FlatRelation.builder()
                                 .id(x.getId()).name(x.getName()).url("/v1/domains/" + x.getId()).build())
                         .collect(Collectors.toList())));
+        res.getItems().forEach(d -> d.setIsInFav(userFavService.isInFav(d.getId(), userDetails)));
         return res;
     }
 
@@ -751,9 +932,11 @@ public class SystemService extends WorkflowableService<System> {
             .versionId(system.getMetadata().getVersionId())
             .name(system.getMetadata().getName())
             .description(system.getEntity().getDescription())
+            .shortDescription(system.getEntity().getShortDescription())
             .modifiedBy(system.getMetadata().getModifiedBy())
             .modifiedAt(system.getMetadata().getModifiedAt())
             .artifactType(system.getMetadata().getArtifactType())
+            .artifactState(((WorkflowableMetadata)system.getMetadata()).getState().name())
             .effectiveStartDate(system.getMetadata().getEffectiveStartDate())
             .effectiveEndDate(system.getMetadata().getEffectiveEndDate())
             .tags(Helper.getEmptyListIfNull(system.getMetadata().getTags()).stream()
@@ -776,6 +959,7 @@ public class SystemService extends WorkflowableService<System> {
             .modifiedBy(systemFolder.getMetadata().getModifiedBy())
             .modifiedAt(systemFolder.getMetadata().getModifiedAt())
             .artifactType(systemFolder.getMetadata().getArtifactType())
+            .artifactState(ArtifactState.PUBLISHED.name())
             .effectiveStartDate(systemFolder.getMetadata().getEffectiveStartDate())
             .effectiveEndDate(systemFolder.getMetadata().getEffectiveEndDate())
             .tags(Helper.getEmptyListIfNull(systemFolder.getMetadata().getTags()).stream()
@@ -784,5 +968,9 @@ public class SystemService extends WorkflowableService<System> {
             .parentId(systemFolder.getEntity().getParentId())
             .children(systemFolder.getEntity().getChildren()).build();
         return sa;
+    }
+
+    public boolean existEntitiesInSystem(String systemId,  UserDetails userDetails) {
+        return systemRepository.existEntitiesInSystem(systemId, userDetails);
     }
 }

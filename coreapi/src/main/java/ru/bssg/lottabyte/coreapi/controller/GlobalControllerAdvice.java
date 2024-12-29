@@ -13,6 +13,10 @@ import ru.bssg.lottabyte.core.model.ErrorContainer;
 import ru.bssg.lottabyte.core.model.ErrorModel;
 import ru.bssg.lottabyte.core.usermanagement.exception.UnauthorisedException;
 
+import java.io.IOException;
+import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.Collections;
 import java.util.UUID;
 
@@ -41,6 +45,17 @@ public class GlobalControllerAdvice extends ResponseEntityExceptionHandler {
         errorModel.setCode(ErrorCode.fromStatus(ru.bssg.lottabyte.core.model.HttpStatus.INTERNAL_ERROR));
         errorModel.setMessage(exception.getMessage() == null || exception.getMessage().isEmpty() ?
                 exception.toString() : exception.getMessage());
+
+        try {
+            final StringWriter sw = new StringWriter();
+            final PrintWriter pw = new PrintWriter(sw, true);
+            exception.printStackTrace(pw);
+            errorModel.setMoreInfo(sw.getBuffer().toString());
+            pw.close();
+            sw.close();
+        } catch (IOException e) {
+
+        }
         String traceId = UUID.randomUUID().toString();
         ErrorContainer errorContainer = new ErrorContainer(
                 traceId, Collections.singletonList(errorModel));

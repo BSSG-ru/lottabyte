@@ -15,7 +15,10 @@ public class SearchableProduct extends SearchableArtifact {
     protected List<String> entityAttributeIds;
     protected List<String> indicatorIds;
     protected List<String> indicatorNames;
+    protected List<String> productIds;
+    protected List<String> productNames;
     protected String domainId;
+    protected String entityQueryId;
     protected String problem;
     protected String consumer;
     protected String value;
@@ -30,11 +33,14 @@ public class SearchableProduct extends SearchableArtifact {
     private String roles;
 
     @Builder
-    public SearchableProduct(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, List<String> entityAttributeIds, List<String> indicatorIds, List<String> indicatorNames, String domainId, String problem, String consumer, String value, String financeSource, List<String> productTypeIds, List<String> productTypeNames, List<String> productSupplyVariantIds, List<String> productSupplyVariantNames, String link, String limits, String limits_internal, String roles) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableProduct(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, List<String> entityAttributeIds, List<String> indicatorIds, List<String> indicatorNames, String domainId, String problem, String consumer, String value, String financeSource, List<String> productTypeIds, List<String> productTypeNames, List<String> productSupplyVariantIds, List<String> productSupplyVariantNames, String link, String limits, String limits_internal, String roles  , List<String> productIds, List<String>  productNames , String entityQueryId) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.entityAttributeIds = entityAttributeIds;
         this.indicatorIds = indicatorIds;
         this.indicatorNames = indicatorNames;
+        this.entityQueryId = entityQueryId;
+        this.productIds = productIds;
+        this.productNames = productNames;
         this.domainId = domainId;
         this.problem = problem;
         this.consumer = consumer;

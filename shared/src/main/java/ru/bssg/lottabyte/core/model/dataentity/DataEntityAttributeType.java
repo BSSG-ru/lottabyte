@@ -6,6 +6,9 @@ public enum DataEntityAttributeType {
     INTEGER,
     BOOLEAN,
     DATE,
+    TIME,
+    ARRAY,
+    JSON,
     ENUMERATION;
 
     private DataEntityAttributeType(){

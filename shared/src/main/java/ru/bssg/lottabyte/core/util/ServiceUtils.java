@@ -175,7 +175,8 @@ public class ServiceUtils {
 
     public static Map<String, Object> getFilterSqlQueryWithJoin(SearchRequestFilter searchRequestFilter,
             SearchColumn[] searchableColumns) {
-        if (!StringUtils.isEmpty(searchRequestFilter.getValue())) {
+        //if (!StringUtils.isEmpty(searchRequestFilter.getValue()))
+        {
             Optional<SearchColumn> sc = Arrays.stream(searchableColumns)
                     .filter(x -> x.getColumn().equals(searchRequestFilter.getColumn())).findFirst();
             Map<String, Object> resMap = new HashMap<>();
@@ -184,71 +185,84 @@ public class ServiceUtils {
             String columnName = searchRequestFilter.getColumn().contains(".") ? searchRequestFilter.getColumn()
                     : "tbl1." + searchRequestFilter.getColumn();
 
-            String columnVariable;
-            if (sc.isPresent() && sc.get().getColumnType().equals(SearchColumn.ColumnType.Timestamp))
-                columnVariable = "to_char(" + columnName + ", 'DD.MM.YYYY')";
-            else
-                columnVariable = columnName;
+            if (searchRequestFilter.getValue() == null || searchRequestFilter.getValue().isEmpty()) {
+                switch (searchRequestFilter.getOperator()) {
+                    case EQUAL: resMap.put(columnName + " IS NULL", null); break;
+                    case NOT_EQUAL: resMap.put(columnName + " IS NOT NULL", null); break;
+                }
 
-            Object statementParameter = sc.isPresent() && sc.get().getColumnType().equals(SearchColumn.ColumnType.UUID)
-                    ? UUID.fromString(searchRequestFilter.getValue())
-                    : searchRequestFilter.getValue();
-            String valForLike = searchRequestFilter.getValue().toLowerCase()
-                    .replace("!", "!!")
-                    .replace("%", "!%")
-                    .replace("_", "!_")
-                    .replace("[", "![");
-            switch (searchRequestFilter.getOperator()) {
-                case LIKE: {
-                    statementParameter = "%" + valForLike + "%";
-                    if (sc.isPresent() && sc.get().getColumnType().equals(SearchColumn.ColumnType.Array))
-                        res = "LOWER(ARRAY_TO_STRING(" + columnVariable + ",'|')) LIKE ? ESCAPE '!'";
-                    else
+            } else {
+
+                String columnVariable;
+                if (sc.isPresent() && sc.get().getColumnType().equals(SearchColumn.ColumnType.Timestamp))
+                    columnVariable = "to_char(" + columnName + ", 'DD.MM.YYYY')";
+                else
+                    columnVariable = columnName;
+
+                Object statementParameter = searchRequestFilter.getValue();
+                if ((sc.isPresent() && sc.get().getColumnType().equals(SearchColumn.ColumnType.UUID)) ||
+                        (!sc.isPresent() && searchRequestFilter.getColumn().endsWith("_id")))
+                    statementParameter = UUID.fromString(searchRequestFilter.getValue());
+                if (sc.isPresent() && sc.get().getColumnType().equals(SearchColumn.ColumnType.Number))
+                    statementParameter = Integer.valueOf(searchRequestFilter.getValue());
+
+                String valForLike = searchRequestFilter.getValue().toLowerCase()
+                        .replace("!", "!!")
+                        .replace("%", "!%")
+                        .replace("_", "!_")
+                        .replace("[", "![");
+                switch (searchRequestFilter.getOperator()) {
+                    case LIKE: {
+                        statementParameter = "%" + valForLike + "%";
+                        if (sc.isPresent() && sc.get().getColumnType().equals(SearchColumn.ColumnType.Array))
+                            res = "LOWER(ARRAY_TO_STRING(" + columnVariable + ",'|')) LIKE ? ESCAPE '!'";
+                        else
+                            res = "LOWER(" + columnVariable + ") LIKE ? ESCAPE '!'";
+                        break;
+                    }
+                    case ENDS_WITH: {
+                        statementParameter = "%" + valForLike;
                         res = "LOWER(" + columnVariable + ") LIKE ? ESCAPE '!'";
-                    break;
+                        break;
+                    }
+                    case STARTS_WITH: {
+                        statementParameter = valForLike + "%";
+                        res = "LOWER(" + columnVariable + ") LIKE ? ESCAPE '!'";
+                        break;
+                    }
+                    case EQUAL:
+                        res = columnVariable + " = ?";
+                        break;
+                    case NOT_EQUAL:
+                        res = columnVariable + " <> ?";
+                        break;
+                    case LESS:
+                        res = columnVariable + " < ?";
+                        break;
+                    case MORE:
+                        res = columnVariable + " > ?";
+                        break;
+                    case LESS_OR_EQUAL:
+                        res = columnVariable + " <= ?";
+                        break;
+                    case MORE_OR_EQUAL:
+                        res = columnVariable + " >= ?";
+                        break;
+                    case ALL:
+                        res = columnVariable + " <@ string_to_array(?,',')";
+                        break;
+                    case ANY:
+                        res = columnVariable + " && string_to_array(?,',')";
+                        break;
+                    case ALL_AVAILABLE:
+                        res = columnVariable + " @> string_to_array(?,',')";
+                        break;
                 }
-                case ENDS_WITH: {
-                    statementParameter = "%" + valForLike;
-                    res = "LOWER(" + columnVariable + ") LIKE ? ESCAPE '!'";
-                    break;
-                }
-                case STARTS_WITH: {
-                    statementParameter = valForLike + "%";
-                    res = "LOWER(" + columnVariable + ") LIKE ? ESCAPE '!'";
-                    break;
-                }
-                case EQUAL:
-                    res = columnVariable + " = ?";
-                    break;
-                case NOT_EQUAL:
-                    res = columnVariable + " <> ?";
-                    break;
-                case LESS:
-                    res = columnVariable + " < ?";
-                    break;
-                case MORE:
-                    res = columnVariable + " > ?";
-                    break;
-                case LESS_OR_EQUAL:
-                    res = columnVariable + " <= ?";
-                    break;
-                case MORE_OR_EQUAL:
-                    res = columnVariable + " >= ?";
-                    break;
-                case ALL:
-                    res = columnVariable + " <@ string_to_array(?,',')";
-                    break;
-                case ANY:
-                    res = columnVariable + " && string_to_array(?,',')";
-                    break;
-                case ALL_AVAILABLE:
-                    res = columnVariable + " @> string_to_array(?,',')";
-                    break;
+                resMap.put(res, statementParameter);
             }
-            resMap.put(res, statementParameter);
             return resMap;
         }
-        return null;
+        //return null;
     }
 
     public static String buildWhereForSearchRequest(SearchRequest searchRequest, SearchColumn[] searchableColumns,
@@ -313,7 +327,10 @@ public class ServiceUtils {
                     if (!sc.getColumn().contains(".")) {
                         vals.add("%" + searchRequest.getGlobalQuery().replaceAll("'", "''").toLowerCase() + "%");
 
-                        parts.add("LOWER(tbl1." + sc.getColumn() + ") LIKE ? ESCAPE '!'");
+                        if (sc.getFilterColumn() == null || sc.getFilterColumn().isEmpty())
+                            parts.add("LOWER(tbl1." + sc.getColumn() + ") LIKE ? ESCAPE '!'");
+                        else
+                            parts.add("LOWER(" + sc.getFilterColumn() + ") LIKE ? ESCAPE '!'");
                     }
                 }
             }
@@ -327,13 +344,15 @@ public class ServiceUtils {
                 if (wheresMap != null) {
                     for (String key : wheresMap.keySet()) {
                         wheres.add(key);
-                        vals.add(wheresMap.get(key));
+
+                        if (wheresMap.get(key) != null)
+                            vals.add(wheresMap.get(key));
                     }
                 }
             }
         }
         Map<String, List<Object>> resMap = new HashMap<>();
-        resMap.put(wheres.isEmpty() ? "" : "WHERE " + StringUtils.join(wheres, " AND "), vals);
+        resMap.put(wheres.isEmpty() ? "" : " WHERE " + StringUtils.join(wheres, " AND "), vals);
         return resMap;
     }
 

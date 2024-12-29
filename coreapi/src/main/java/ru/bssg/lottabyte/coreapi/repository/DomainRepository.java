@@ -31,6 +31,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
+
 @Repository
 @Slf4j
 public class DomainRepository extends WorkflowableRepository<Domain> {
@@ -51,12 +53,13 @@ public class DomainRepository extends WorkflowableRepository<Domain> {
             DomainEntity domainEntity = new DomainEntity();
             domainEntity.setName(rs.getString("name"));
             domainEntity.setDescription(rs.getString("description"));
+            domainEntity.setShortDescription(rs.getString("short_description"));
 
             return new Domain(domainEntity, new WorkflowableMetadata(rs, domainEntity.getArtifactType()));
         }
     }
 
-    private static class FlatDomainRowMapper extends FlatItemRowMapper<FlatDomain> {
+    public static class FlatDomainRowMapper extends FlatItemRowMapper<FlatDomain> {
 
         public FlatDomainRowMapper() { super(FlatDomain::new); }
 
@@ -193,8 +196,8 @@ public class DomainRepository extends WorkflowableRepository<Domain> {
     public String createDomain(DomainEntity domain, String workflowTaskId, UserDetails userDetails) throws LottabyteException {
         UUID newId = domain.getId() != null ? UUID.fromString(domain.getId()) : UUID.randomUUID();
         Timestamp ts = new Timestamp(new java.util.Date().getTime());
-        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".domain (id, name, description, state, workflow_task_id, created, creator, modified, modifier) VALUES (?,?,?,?,?,?,?,?,?)",
-                newId, domain.getName(), domain.getDescription(),
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".domain (id, name, description, short_description, state, workflow_task_id, created, creator, modified, modifier) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                newId, domain.getName(), domain.getDescription(), domain.getShortDescription(),
                 ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
                 ts, userDetails.getUid(), ts, userDetails.getUid());
@@ -203,8 +206,8 @@ public class DomainRepository extends WorkflowableRepository<Domain> {
 
     public String createDomainDraft(String publishedDomainId, String draftId, String workflowTaskId, UserDetails userDetails) {
         UUID newId = draftId != null ? UUID.fromString(draftId) : UUID.randomUUID();
-        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".domain (id, name, description, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier) " +
-                "SELECT ?, name, description, ?, ?, id, version_id, created, creator, modified, modifier FROM da_" + userDetails.getTenant() + ".domain where id = ?",
+        jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".domain (id, name, description, short_description, state, workflow_task_id, published_id, published_version_id, created, creator, modified, modifier) " +
+                "SELECT ?, name, description, short_description, ?, ?, id, version_id, created, creator, modified, modifier FROM da_" + userDetails.getTenant() + ".domain where id = ?",
                 newId, ArtifactState.DRAFT.toString(),
                 workflowTaskId != null ? UUID.fromString(workflowTaskId) : null,
                 UUID.fromString(publishedDomainId));
@@ -214,16 +217,16 @@ public class DomainRepository extends WorkflowableRepository<Domain> {
     public String publishDomainDraft(String draftDomainId, String publishedDomainId, UserDetails userDetails) {
         String res = null;
         if (publishedDomainId != null) {
-            jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".domain d SET name = draft.name, description = draft.description, "
+            jdbcTemplate.update("UPDATE da_" + userDetails.getTenant() + ".domain d SET name = draft.name, description = draft.description, short_description = draft.short_description, "
                             + " ancestor_draft_id = draft.id, modified = draft.modified, modifier = draft.modifier "
-                            + " from (select id, name, description, modified, modifier FROM da_" + userDetails.getTenant() + ".domain) as draft where d.id = ? and draft.id = ?",
+                            + " from (select id, name, description, short_description, modified, modifier FROM da_" + userDetails.getTenant() + ".domain) as draft where d.id = ? and draft.id = ?",
                     UUID.fromString(publishedDomainId), UUID.fromString(draftDomainId));
             res = publishedDomainId;
         } else {
             UUID newId = UUID.randomUUID();
-            jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".domain (id, name, description, state, workflow_task_id, "
+            jdbcTemplate.update("INSERT INTO da_" + userDetails.getTenant() + ".domain (id, name, description, short_description, state, workflow_task_id, "
                             + "published_id, published_version_id, ancestor_draft_id, created, creator, modified, modifier) "
-                            + "SELECT ?, name, description, ?, ?, ?, ?, ?, created, creator, modified, modifier "
+                            + "SELECT ?, name, description, short_description, ?, ?, ?, ?, ?, created, creator, modified, modifier "
                             + "FROM da_" + userDetails.getTenant() + ".domain where id = ?",
                     newId, ArtifactState.PUBLISHED.toString(), null, null, null,
                     UUID.fromString(draftDomainId), UUID.fromString(draftDomainId));
@@ -235,7 +238,7 @@ public class DomainRepository extends WorkflowableRepository<Domain> {
         return res;
     }
 
-    public Domain updateDomain(String domainId, UpdatableDomainEntity domainEntity, UserDetails userDetails) throws LottabyteException {
+    public Domain updateDomain(String domainId, UpdatableDomainEntity domainEntity, boolean updateNulls, UserDetails userDetails) throws LottabyteException {
         Domain d = new Domain(domainEntity);
         d.setId(domainId);
         d.setModifiedBy(userDetails.getUid());
@@ -244,13 +247,17 @@ public class DomainRepository extends WorkflowableRepository<Domain> {
         List<String> sets = new ArrayList<>();
         List<Object> args = new ArrayList<>();
 
-        if (domainEntity.getName() != null) {
+        if (updateNulls || domainEntity.getName() != null) {
             sets.add("name=?");
             args.add(domainEntity.getName());
         }
-        if (domainEntity.getDescription() != null) {
+        if (updateNulls || domainEntity.getDescription() != null) {
             sets.add("description=?");
             args.add(domainEntity.getDescription());
+        }
+        if (updateNulls || domainEntity.getShortDescription() != null) {
+            sets.add("short_description=?");
+            args.add(domainEntity.getShortDescription());
         }
         if (sets.size() > 0) {
             sets.add("modified=?");
@@ -294,7 +301,6 @@ public class DomainRepository extends WorkflowableRepository<Domain> {
 
         String orderby = searchSQLParts.getOrderBy();
         String where = searchSQLParts.getWhere();
-        String join = searchSQLParts.getJoin();
         List<Object> whereValues = searchSQLParts.getWhereValues();
 
         String subQuery = "SELECT d.*, true as has_access FROM da_" + userDetails.getTenant() + ".domain d ";
@@ -334,5 +340,15 @@ public class DomainRepository extends WorkflowableRepository<Domain> {
         return jdbcTemplate.queryForList("SELECT system_id FROM da_" + userDetails.getTenant()
                 + ".system_to_domain sd JOIN da_" + userDetails.getTenant() + ".system s ON sd.system_id = s.id WHERE sd.domain_id=? and state = ?",
                 String.class, UUID.fromString(domainId), ArtifactState.PUBLISHED.name());
+    }
+
+    public List<UserDetails> getResponsibles(String domainId, UserDetails userDetails) {
+
+        return jdbcTemplate.query("SELECT * FROM da_" + userDetails.getTenant() + ".steward_to_domain s2d"
+                        + " JOIN da_" + userDetails.getTenant() + ".steward s ON s.id=s2d.steward_id"
+                        + " JOIN usermgmt.platform_users pu ON s.user_id=pu.uid AND pu.approval_status='approved' AND pu.current_account_status='enabled'"
+                        + " WHERE s2d.domain_id = ?",
+                new UserRepository.SimpleUserDetailsRowMapper(), UUID.fromString(domainId));
+
     }
 }

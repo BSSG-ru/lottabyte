@@ -23,8 +23,8 @@ public class SearchableEntitySample extends SearchableArtifact {
     protected String roles;
 
     @Builder
-    public SearchableEntitySample(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String entityId, String systemId, String entityQueryId, EntitySampleType sampleType, String sampleBody, Boolean isMain, List<String> propertyNames, String roles) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableEntitySample(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String entityId, String systemId, String entityQueryId, EntitySampleType sampleType, String sampleBody, Boolean isMain, List<String> propertyNames, String roles) {
+        super(id, versionId, name, description, "", tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.entityId = entityId;
         this.systemId = systemId;
         this.entityQueryId = entityQueryId;

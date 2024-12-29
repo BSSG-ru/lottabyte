@@ -12,7 +12,10 @@ import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
 import ru.bssg.lottabyte.core.model.businessEntity.*;
+import ru.bssg.lottabyte.core.model.dataentity.DataEntity;
 import ru.bssg.lottabyte.core.model.domain.Domain;
+import ru.bssg.lottabyte.core.model.indicator.Indicator;
+import ru.bssg.lottabyte.core.model.indicator.UpdatableIndicatorEntity;
 import ru.bssg.lottabyte.core.model.reference.Reference;
 import ru.bssg.lottabyte.core.model.reference.ReferenceEntity;
 import ru.bssg.lottabyte.core.model.reference.ReferenceType;
@@ -45,11 +48,14 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
     private final TagService tagService;
     private final WorkflowService workflowService;
     private final ArtifactType serviceArtifactType = ArtifactType.business_entity;
+    private final UserFavService userFavService;
 
     private final SearchColumn[] searchableColumns = {
             new SearchColumn("id", SearchColumn.ColumnType.UUID),
             new SearchColumn("name", SearchColumn.ColumnType.Text),
             new SearchColumn("modified", SearchColumn.ColumnType.Timestamp),
+            new SearchColumn("short_description", SearchColumn.ColumnType.Text),
+            new SearchColumn("description", SearchColumn.ColumnType.Text),
             new SearchColumn("tech_name", SearchColumn.ColumnType.Text),
             new SearchColumn("definition", SearchColumn.ColumnType.Text),
             new SearchColumn("regulation", SearchColumn.ColumnType.Text),
@@ -59,7 +65,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
             new SearchColumn("be_links", SearchColumn.ColumnType.Text),
             new SearchColumn("domain_id", SearchColumn.ColumnType.UUID),
             new SearchColumn("domain.name", SearchColumn.ColumnType.Text),
-            new SearchColumn("domain_name", SearchColumn.ColumnType.Text),
+            new SearchColumn("domain_name", SearchColumn.ColumnType.Text, "domain.name"),
             new SearchColumn("parent_id", SearchColumn.ColumnType.UUID)
     };
 
@@ -74,9 +80,10 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
             BusinessEntityRepository businessEntityRepository,
             ReferenceService referenceService, CustomAttributeDefinitionService customAttributeDefinitionService,
             CommentService commentService, TagService tagService,
-            WorkflowService workflowService, DomainRepository domainRepository) {
+            WorkflowService workflowService, DomainRepository domainRepository,
+            UserFavService userFavService) {
         super(businessEntityRepository, workflowService, tagService,
-                ArtifactType.business_entity, elasticsearchService);
+                ArtifactType.business_entity, elasticsearchService, referenceService);
         this.elasticsearchService = elasticsearchService;
         this.businessEntityRepository = businessEntityRepository;
         this.referenceService = referenceService;
@@ -85,6 +92,18 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
         this.tagService = tagService;
         this.workflowService = workflowService;
         this.domainRepository = domainRepository;
+        this.userFavService = userFavService;
+    }
+
+    public BusinessEntity wfSend(String draftId, UserDetails userDetails) throws LottabyteException {
+        BusinessEntity draft = businessEntityRepository.getById(draftId, userDetails);
+        if (draft == null)
+            throw new LottabyteException(
+                    Message.LBE03004,
+                    userDetails.getLanguage(),
+                    serviceArtifactType, draftId);
+
+        return draft;
     }
 
     public BusinessEntity wfPublish(String businessEntityDraftId, UserDetails userDetails) throws LottabyteException {
@@ -112,8 +131,11 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
         }
         tagService.mergeTags(businessEntityDraftId, serviceArtifactType, publishedId, serviceArtifactType, userDetails);
         businessEntity = getBusinessEntityById(publishedId, userDetails);
-        elasticsearchService.insertElasticSearchEntity(
+        if (publishedId == null)
+            elasticsearchService.insertElasticSearchEntity(
                 Collections.singletonList(getSearchableArtifact(businessEntity, userDetails)), userDetails);
+        else
+            elasticsearchService.updateElasticSearchEntity(Collections.singletonList(getSearchableArtifact(businessEntity, userDetails)), userDetails);
         return businessEntity;
     }
 
@@ -162,7 +184,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
                             userDetails.getLanguage(),
                     serviceArtifactType, draftBusinessEntityId);
         if (businessEntityRepository.hasChildren(publishedId, userDetails))
-            throw new LottabyteException(Message.LBE02505, userDetails.getLanguage(), publishedId);
+            throw new LottabyteException(Message.LBE02505, userDetails.getLanguage(), businessEntity.getName());
 
         businessEntityRepository.setStateById(businessEntity.getId(), ArtifactState.DRAFT_HISTORY,
                 userDetails);
@@ -331,7 +353,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public BusinessEntity patchBusinessEntity(String businessEntityId,
-            UpdatableBusinessEntityEntity businessEntityEntity, UserDetails userDetails) throws LottabyteException {
+            UpdatableBusinessEntityEntity businessEntityEntity, boolean updateNulls, UserDetails userDetails) throws LottabyteException {
         if (businessEntityEntity.getSynonymIds() != null && !businessEntityEntity.getSynonymIds().isEmpty()
                 && Objects.requireNonNull(businessEntityEntity.getSynonymIds()).contains(businessEntityId))
             throw new LottabyteException(Message.LBE02504,
@@ -354,6 +376,12 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
         if (businessEntityEntity.getName() != null && businessEntityEntity.getName().isEmpty())
             throw new LottabyteException(Message.LBE02502,
                             userDetails.getLanguage(), businessEntityEntity.getName());
+
+        if (updateNulls && businessEntityEntity.getSynonymIds() == null)
+            businessEntityEntity.setSynonymIds(new ArrayList<>());
+        if (updateNulls && businessEntityEntity.getBeLinkIds() == null)
+            businessEntityEntity.setBeLinkIds(new ArrayList<>());
+
         ProcessInstance pi = null;
         if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
             String workflowTaskId = null;
@@ -420,7 +448,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
             }
         }
 
-        businessEntityRepository.patchBusinessEntity(draftId, businessEntityEntity, userDetails);
+        businessEntityRepository.patchBusinessEntity(draftId, businessEntityEntity, updateNulls, userDetails);
         BusinessEntity businessEntity = getBusinessEntityById(draftId, userDetails);
         // elasticsearchService.updateElasticSearchEntity(Collections.singletonList(businessEntity.getSearchableArtifact()),
         // userDetails);
@@ -435,7 +463,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
 
             if (businessEntityRepository.hasChildren(businessEntityId, userDetails)) {
                 throw new LottabyteException(Message.LBE02505,
-                        userDetails.getLanguage(), businessEntityId);
+                        userDetails.getLanguage(), current.getName());
             }
 
             String draftId = businessEntityRepository.getDraftId(businessEntityId, userDetails);
@@ -477,6 +505,77 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
          * businessEntityId), userDetails);
          * return archiveResponse;
          */
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public BusinessEntity archiveBusinessEntityById(String businessEntityId, UserDetails userDetails)
+            throws LottabyteException {
+        BusinessEntity current = getBusinessEntityById(businessEntityId, userDetails);
+        if (ArtifactState.PUBLISHED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+
+            if (businessEntityRepository.hasChildren(businessEntityId, userDetails)) {
+                throw new LottabyteException(Message.LBE02506,
+                        userDetails.getLanguage(), current.getName());
+            }
+
+            String draftId = businessEntityRepository.getDraftId(businessEntityId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00505,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.ARCHIVE, userDetails);
+            workflowTaskId = pi.getId();
+
+            businessEntityRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+            createSynonymsReference(current.getEntity().getSynonymIds(), draftId, businessEntityId, userDetails);
+            createBELinksReference(current.getEntity().getBeLinkIds(), draftId, businessEntityId, userDetails);
+
+            return getBusinessEntityById(draftId, userDetails);
+        } else {
+            String draftId = businessEntityRepository.getDraftId(businessEntityId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
+    }
+
+    public BusinessEntity restoreBusinessEntityById(String businessEntityId, UserDetails userDetails) throws LottabyteException {
+        BusinessEntity current = getBusinessEntityById(businessEntityId, userDetails);
+        if (ArtifactState.ARCHIVED.equals(((WorkflowableMetadata) current.getMetadata()).getState())) {
+
+            String draftId = businessEntityRepository.getDraftId(businessEntityId, userDetails);
+            if (draftId != null && !draftId.isEmpty())
+                throw new LottabyteException(
+                        Message.LBE00505,
+                        userDetails.getLanguage(),
+                        draftId);
+
+            ProcessInstance pi = null;
+            String workflowTaskId = null;
+
+            draftId = UUID.randomUUID().toString();
+            pi = workflowService.startFlowableProcess(draftId, serviceArtifactType, ArtifactAction.RESTORE, userDetails);
+            workflowTaskId = pi.getId();
+
+            businessEntityRepository.createDraftFromPublished(current.getId(), draftId, workflowTaskId, userDetails);
+            createSynonymsReference(current.getEntity().getSynonymIds(), draftId, businessEntityId, userDetails);
+            createBELinksReference(current.getEntity().getBeLinkIds(), draftId, businessEntityId, userDetails);
+
+            return getBusinessEntityById(draftId, userDetails);
+        } else {
+            String draftId = businessEntityRepository.getDraftId(businessEntityId, userDetails);
+            throw new LottabyteException(
+                    Message.LBE00119,
+                    userDetails.getLanguage(),
+                    draftId);
+        }
     }
 
     public List<BusinessEntity> getSynonymsByBEId(String beId, UserDetails userDetails) {
@@ -524,6 +623,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
                     data.setModified(be.getModified().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")));
                     data.setWorkflowState(be.getWorkflowState());
                     data.setTags(StringUtils.join(be.getTags(), ", "));
+                    data.setIsInFav(userFavService.isInFav(be.getId(), userDetails));
                     node.setData(data);
                     node.setChildren(new ArrayList<BusinessEntityTreeNode>());
 
@@ -564,6 +664,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
                     .id(y.getId()).name(y.getName()).build()).collect(Collectors.toList()));
             item.setBeLinks(getBELinksByBEId(item.getId(), userDetails).stream().map(y -> FlatRelation.builder()
                     .id(y.getId()).name(y.getName()).build()).collect(Collectors.toList()));
+            item.setIsInFav(userFavService.isInFav(item.getId(), userDetails));
         }
         return res;
     }
@@ -601,6 +702,20 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
         return be;
     }
 
+    public BusinessEntity restoreBusinessEntityVersionById(String beId, Integer versionId, UserDetails userDetails)
+            throws LottabyteException {
+        BusinessEntity beVersion = getBusinessEntityVersionById(beId, versionId, userDetails);
+        UpdatableBusinessEntityEntity beVersionEntity = new UpdatableBusinessEntityEntity(beVersion.getEntity());
+
+        BusinessEntity be = patchBusinessEntity(beId, beVersionEntity, true, userDetails);
+
+        WorkflowableMetadata versionMetadata = (WorkflowableMetadata)beVersion.getMetadata();
+
+        tagService.mergeTags(versionMetadata.getAncestorDraftId() == null ? beVersion.getId() : versionMetadata.getAncestorDraftId(), serviceArtifactType, be.getId(), serviceArtifactType, userDetails);
+
+        return be;
+    }
+
     private void fillBusinessEntityVersionRelations(BusinessEntity be, UserDetails userDetails) {
         WorkflowableMetadata md = (WorkflowableMetadata) be.getMetadata();
         if (md.getAncestorDraftId() != null) {
@@ -627,9 +742,12 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
             .versionId(businessEntity.getMetadata().getVersionId())
             .name(businessEntity.getMetadata().getName())
             .description(businessEntity.getEntity().getDescription())
+            .shortDescription(businessEntity.getEntity().getShortDescription())
+            .shortDescription(businessEntity.getEntity().getShortDescription())
             .modifiedBy(businessEntity.getMetadata().getModifiedBy())
             .modifiedAt(businessEntity.getMetadata().getModifiedAt())
             .artifactType(businessEntity.getMetadata().getArtifactType())
+            .artifactState(((WorkflowableMetadata)businessEntity.getMetadata()).getState().name())
             .effectiveStartDate(businessEntity.getMetadata().getEffectiveStartDate())
             .effectiveEndDate(businessEntity.getMetadata().getEffectiveEndDate())
             .tags(Helper.getEmptyListIfNull(businessEntity.getMetadata().getTags()).stream()

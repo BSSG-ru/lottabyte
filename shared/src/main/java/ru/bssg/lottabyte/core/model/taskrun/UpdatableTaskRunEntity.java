@@ -22,7 +22,7 @@ public class UpdatableTaskRunEntity extends TaskRunEntity {
         this.setArtifactType(fromCopy.getArtifactType());
         this.setDescription(fromCopy.getDescription());
         this.setLastUpdated(fromCopy.getLastUpdated());
-        this.setTaskId(fromCopy.getTaskId());
+        this.setTaskScheduleId(fromCopy.getTaskScheduleId());
         this.setTaskEnd(fromCopy.getTaskEnd());
         this.setTaskState(fromCopy.getTaskState());
         this.setTaskStart(fromCopy.getTaskStart());

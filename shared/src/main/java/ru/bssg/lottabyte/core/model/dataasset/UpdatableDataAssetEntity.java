@@ -29,6 +29,7 @@ public class UpdatableDataAssetEntity extends DataAssetEntity {
         this.setHasQuery(fromCopy.getHasQuery());
         this.setHasSample(fromCopy.getHasSample());
         this.setHasStatistics(fromCopy.getHasStatistics());
+        this.setTechName(fromCopy.getTechName());
     }
 
     @Override

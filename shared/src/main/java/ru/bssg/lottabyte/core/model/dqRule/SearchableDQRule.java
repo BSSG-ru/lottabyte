@@ -28,8 +28,8 @@ public class SearchableDQRule extends SearchableArtifact {
     private String ruleTypeName;
 
     @Builder
-    public SearchableDQRule(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String ruleRef, String settings, String ruleTypeId, String ruleTypeName) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableDQRule(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String ruleRef, String settings, String ruleTypeId, String ruleTypeName) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.ruleRef = ruleRef;
         this.settings = settings;
         this.ruleTypeId = ruleTypeId;

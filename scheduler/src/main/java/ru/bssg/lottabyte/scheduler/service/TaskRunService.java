@@ -18,10 +18,10 @@ public class TaskRunService {
         this.taskRunRepository = taskRunRepository;
     }
 
-    public TaskRun getTaskRunByTaskId(String taskId, UserDetails userDetails) {
-        return taskRunRepository.getTaskRunByTaskId(taskId, userDetails);
+    public TaskRun getTaskRunByTaskScheduleId(String taskScheduleId, UserDetails userDetails) {
+        return taskRunRepository.getTaskRunByTaskScheduleId(taskScheduleId, userDetails);
     }
-    public List<TaskRun> getTaskRunListByTaskId(String taskId, UserDetails userDetails) {
-        return taskRunRepository.getTaskRunListByTaskId(taskId, userDetails);
+    public List<TaskRun> getTaskRunListByTaskScheduleId(String taskScheduleId, UserDetails userDetails) {
+        return taskRunRepository.getTaskRunListByTaskScheduleId(taskScheduleId, userDetails);
     }
 }

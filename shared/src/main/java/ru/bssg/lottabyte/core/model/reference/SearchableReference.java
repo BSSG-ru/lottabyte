@@ -28,8 +28,8 @@ public class SearchableReference extends SearchableArtifact {
     protected Integer versionId;
 
     @Builder
-    public SearchableReference(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String sourceId, String sourceType, String targetId, String targetType, String relationType, Integer versionId1) {
-        super(id, versionId, name, description, tags, modifiedBy, modifiedAt, artifactType, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableReference(String id, Integer versionId, String name, String description, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String sourceId, String sourceType, String targetId, String targetType, String relationType, Integer versionId1) {
+        super(id, versionId, name, description, "", tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.sourceId = sourceId;
         this.sourceType = sourceType;
         this.targetId = targetId;

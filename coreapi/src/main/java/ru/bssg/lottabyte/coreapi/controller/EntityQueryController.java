@@ -20,6 +20,7 @@ import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.model.ArchiveResponse;
 import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
 import ru.bssg.lottabyte.core.model.dataasset.DataAsset;
+import ru.bssg.lottabyte.core.model.dataentity.DataEntity;
 import ru.bssg.lottabyte.core.model.dataentity.FlatDataEntity;
 import ru.bssg.lottabyte.core.model.entityQuery.EntityQuery;
 import ru.bssg.lottabyte.core.model.entityQuery.FlatEntityQuery;
@@ -159,7 +160,7 @@ public class EntityQueryController {
             @RequestHeader HttpHeaders headers) throws LottabyteException {
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
-        return new ResponseEntity<>(queryService.patchQuery(queryId, entityQueryEntity, userDetails), HttpStatus.OK);
+        return new ResponseEntity<>(queryService.patchQuery(queryId, entityQueryEntity, false, userDetails), HttpStatus.OK);
     }
 
     @Operation(
@@ -240,7 +241,7 @@ public class EntityQueryController {
     public ResponseEntity<PaginatedArtifactList<EntityQuery>> getEntityQueryVersionsById(
             @PathVariable("query_id") String queryId,
             @Parameter(description = "The maximum number of Entity Query versions to return - must be at least 1 and cannot exceed 200. The default value is 10.")
-            @RequestParam(value="limit", defaultValue = "10") Integer limit,
+            @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
@@ -272,5 +273,81 @@ public class EntityQueryController {
             @PathVariable("version_id") Integer versionId,
             @RequestHeader HttpHeaders headers) throws LottabyteException {
         return ResponseEntity.ok(queryService.getEntityQueryVersionById(queryId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+    }
+
+    @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Restores Entity query version by given guid and version id.", description = "This method can be used to restore Entity query history version by given guid and version id.", operationId = "restoreEntityQueryVersionById")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Operation successfully"),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "Entity query version not found"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/{query_id}/versions/{version_id}/restore", method = RequestMethod.POST, produces = {
+            "application/json" })
+    @Secured(roles = { "req_u" }, level = ANY_ROLE)
+    public ResponseEntity<EntityQuery> restoreEntityQueryVersionById(
+            @Parameter(description = "ID of the Entity query", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("query_id") String queryId,
+            @Parameter(description = "Version ID of the Entity query", example = "1") @PathVariable("version_id") Integer versionId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+        return ResponseEntity.ok(queryService.restoreQueryVersionById(queryId, versionId,
+                jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Archives Entity query by given guid.",
+            description = "This method can be used to archive Entity query by given guid.",
+            operationId = "archiveEntityQuery"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Entity query has been archived successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/archive/{query_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"req_r", "req_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<?> archiveEntityQuery(
+            @Parameter(description = "ID of the Entity query",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("query_id") String queryId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        EntityQuery result = queryService.archiveQueryById(queryId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        if (result == null) {
+            ArchiveResponse resp = new ArchiveResponse();
+            resp.setDeletedGuids(Collections.singletonList(queryId));
+            return ResponseEntity.ok(resp);
+        } else {
+            return ResponseEntity.ok(result);
+        }
+    }
+
+    @Operation(
+            security = @SecurityRequirement(name = "bearerAuth"),
+            summary = "Restores Query by given guid.",
+            description = "This method can be used to restore Query by given guid.",
+            operationId = "restoreDataAsset"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Query has been restored successfully for DRAFT domain."),
+            @ApiResponse(responseCode = "400", description = "Bad request"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "500", description = "Internal Server error")
+    })
+    @RequestMapping(value = "/restore/{query_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"req_r", "req_u"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<EntityQuery> restoreEntityQuery(
+            @Parameter(description = "ID of the Query",
+                    example = "aa0e33f5-3108-4d45-a530-0307458362d4")
+            @PathVariable("query_id") String queryId,
+            @RequestHeader HttpHeaders headers) throws LottabyteException {
+
+        EntityQuery result = queryService.restoreQueryById(queryId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+        return new ResponseEntity<>(result, HttpStatus.OK);
     }
 }

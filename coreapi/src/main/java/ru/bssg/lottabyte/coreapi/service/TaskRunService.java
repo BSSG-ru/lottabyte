@@ -21,8 +21,8 @@ public class TaskRunService {
     private final TaskRunRepository taskRunRepository;
     private final TaskService taskService;
 
-    public List<TaskRun> getTaskRunListByTaskId(String taskId, UserDetails userDetails) {
-        return taskRunRepository.getTaskRunListByTaskId(taskId, userDetails);
+    public List<TaskRun> getTaskRunListByTaskScheduleId(String taskScheduleId, UserDetails userDetails) {
+        return taskRunRepository.getTaskRunListByTaskScheduleId(taskScheduleId, userDetails);
     }
 
     public TaskRun getTaskRunById(String taskRunId, UserDetails userDetails) {
@@ -35,8 +35,8 @@ public class TaskRunService {
     }
 
     public TaskRun createTaskRun(UpdatableTaskRunEntity updatableTaskRunEntity, UserDetails userDetails) throws LottabyteException {
-        if (updatableTaskRunEntity.getTaskId() == null || taskService.getTaskById(updatableTaskRunEntity.getTaskId(), userDetails) == null)
-            throw new LottabyteException(Message.LBE01401, userDetails.getLanguage(), updatableTaskRunEntity.getTaskId());
+        if (updatableTaskRunEntity.getTaskScheduleId() == null || taskService.getTaskScheduleById(updatableTaskRunEntity.getTaskScheduleId(), userDetails) == null)
+            throw new LottabyteException(Message.LBE01410, userDetails.getLanguage(), updatableTaskRunEntity.getTaskScheduleId());
 
         String taskRunId = taskRunRepository.createTaskRun(updatableTaskRunEntity, userDetails);
         return getTaskRunById(taskRunId, userDetails);

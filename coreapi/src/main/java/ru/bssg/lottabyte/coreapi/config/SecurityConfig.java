@@ -93,7 +93,6 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .enablePayloadSigning()
                 .withPayloadSigningEnabled(true)
                 .withClientConfiguration(cc)
-                //.withPathStyleAccessEnabled(true)
                 .build();
     }
 

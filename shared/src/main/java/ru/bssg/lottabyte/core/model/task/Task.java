@@ -25,12 +25,12 @@ public class Task extends ModeledObject<TaskEntity> {
         super(entity, md, ArtifactType.task);
     }
 
-    @Override
+    /*@Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Task myObject = (Task) o;
         return Objects.equals(this.getEntity().getScheduleType(), myObject.getEntity().getScheduleType()) &&
                Objects.equals(this.getEntity().getScheduleParams(), myObject.getEntity().getScheduleParams());
-    }
+    }*/
 }

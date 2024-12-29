@@ -24,6 +24,7 @@ public enum ArtifactType {
     system_connection("system_connection"),
     system_connection_param("system_connection_param"),
     task("task"),
+    task_schedule("task_schedule"),
     qualityTask("qualityTask"),
     qualityAssertionTask("qualityAssertionTask"),
     qualityRuleTask("qualityRuleTask"),
@@ -47,7 +48,11 @@ public enum ArtifactType {
     product("product"),
     product_type("product_type"),
     tech_spec("tech_spec"),
-    product_supply_variant("product_supply_variant");
+    product_supply_variant("product_supply_variant"),
+    dq_rule_task("dq_rule_task"),
+    meta_object("meta_object"),
+    meta_column("meta_column"),
+    meta_database("meta_database");
 
     private String text;
 

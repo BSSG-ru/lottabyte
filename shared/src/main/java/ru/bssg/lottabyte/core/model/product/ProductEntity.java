@@ -14,7 +14,9 @@ import java.util.List;
 public class ProductEntity extends Entity {
     private List<String> entityAttributeIds;
     private List<String> indicatorIds;
+    private List<String> productIds;
     private String domainId;
+    private String entityQueryId;
 
     private String problem;
     private String consumer;
