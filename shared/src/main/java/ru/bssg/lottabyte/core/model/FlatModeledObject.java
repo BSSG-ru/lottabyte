@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @Data
@@ -19,8 +20,11 @@ public class FlatModeledObject {
     protected String shortDescription;
     protected Integer versionId;
     protected LocalDateTime modified;
+    protected LocalDateTime created;
     protected Boolean hasAccess;
     protected Boolean isInFav;
+    protected ArtifactType artifactType;
+    private List<String> tags;
 
 
     public FlatModeledObject(FlatModeledObject f) {
@@ -29,10 +33,13 @@ public class FlatModeledObject {
         this.description = f.getDescription();
         this.shortDescription = f.getShortDescription();
         this.modified = f.getModified();
+        this.created = f.getCreated();
         this.versionId = f.getVersionId();
         this.num = f.getNum();
         this.hasAccess = f.getHasAccess();
         this.isInFav = f.getIsInFav();
+        this.artifactType = f.getArtifactType();
+        this.tags = f.getTags();
     }
 
 }

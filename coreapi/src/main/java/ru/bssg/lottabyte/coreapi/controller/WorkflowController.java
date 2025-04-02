@@ -45,6 +45,7 @@ import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
 import ru.bssg.lottabyte.coreapi.model.DeploymentResponse;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.WorkflowService;
 
 import javax.servlet.http.HttpServletRequest;
@@ -78,6 +79,7 @@ public class WorkflowController {
     private final JwtHelper jwtHelper;
     private final WorkflowService workflowService;
     private final RepositoryService repositoryService;
+    private final APILogService apiLogService;
 
     @Operation(
             security = @SecurityRequirement(name = "bearerAuth"),
@@ -99,7 +101,9 @@ public class WorkflowController {
             @Parameter(description = "ID of the Workflow task",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("workflow_task_id") String workflowTaskId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, workflowTaskId);
         WorkflowTask t = workflowService.getWorkflowTaskById(workflowTaskId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)), true);
         return ResponseEntity.ok(t);
     }
@@ -128,7 +132,9 @@ public class WorkflowController {
                     example = "publish")
             @PathVariable("workflow_task_action") String workflowTaskAction,
             @RequestBody List<WorkflowActionParamResult> actionParams,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, workflowTaskId, workflowTaskAction, actionParams);
         return ResponseEntity.ok(workflowService.postWorkflowTaskAction(workflowTaskId, workflowTaskAction, actionParams,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
 
@@ -155,12 +161,15 @@ public class WorkflowController {
             @PathVariable("artifact_type") String artifactType,
             @Parameter(description = "ID of the artifact", example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("artifact_id") String artifactId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactType, artifactId);
         return ResponseEntity.ok(workflowService.createDraft(artifactType, artifactId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
     @GetMapping(value = "/repository/list", produces = "application/json")
-    public String listDeployments() {
+    public String listDeployments(HttpServletRequest request) {
+        apiLogService.logApiCall(request);
         List<Deployment> deps = repositoryService.createDeploymentQuery().list();
         deps.stream().forEach(x -> log.info(x.toString()));
         List<ProcessDefinition> prdefs = repositoryService.createProcessDefinitionQuery().latestVersion().list();
@@ -186,7 +195,7 @@ public class WorkflowController {
                                                @ApiParam(name = "deploymentName") @RequestParam(value = "deploymentName", required = false) String deploymentName,
                                                @ApiParam(name = "tenantId") @RequestParam(value = "tenantId", required = false) String tenantId,
                                                HttpServletRequest request, HttpServletResponse response) throws LottabyteException {
-
+        apiLogService.logApiCall(request, deploymentKey, deploymentName, tenantId);
         if (!(request instanceof MultipartHttpServletRequest)) {
             throw new LottabyteException("Multipart request is required");
         }
@@ -290,10 +299,11 @@ public class WorkflowController {
     @RequestMapping(value = "/searchSettings", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"workflow_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatWorkflowProcessDefinition>> searchSettings(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        return ResponseEntity.ok(workflowService.searchSettings(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        return ResponseEntity.ok(workflowService.searchSettings(sr, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
     @Operation(
@@ -315,8 +325,9 @@ public class WorkflowController {
             @Parameter(description = "ID",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("id") String id,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, id);
         WorkflowProcessDefinition result = workflowService.deleteSettingsById(id, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -347,8 +358,9 @@ public class WorkflowController {
             @Parameter(description = "ID",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("id") String id,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, id);
         WorkflowProcessDefinition d = workflowService.getSettingsById(id, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
@@ -373,8 +385,9 @@ public class WorkflowController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("id") String id,
             @RequestBody UpdatableWorkflowProcessDefinition newPd,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, id, newPd);
         WorkflowProcessDefinition d = workflowService.updateSettings(id, newPd, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
@@ -395,7 +408,9 @@ public class WorkflowController {
     @RequestMapping(value = "/settings", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"workflow_r", "workflow_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<WorkflowProcessDefinition> createSettings(@RequestBody UpdatableWorkflowProcessDefinition pd,
-                                               @RequestHeader HttpHeaders headers) throws LottabyteException {
+                                               @RequestHeader HttpHeaders headers,
+                                                                    HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, pd);
         WorkflowProcessDefinition d = workflowService.createSettings(pd, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
@@ -415,7 +430,9 @@ public class WorkflowController {
     })
     @RequestMapping(value = "/processDefinitions", method = RequestMethod.GET, produces = { "application/json"})
     @Secured(roles = {"workflow_r"}, level = ALL_ROLES_STRICT)
-    public ResponseEntity<Map<String, String>> getFlowableProcessDefinitions(@RequestHeader HttpHeaders headers) throws LottabyteException {
+    public ResponseEntity<Map<String, String>> getFlowableProcessDefinitions(@RequestHeader HttpHeaders headers,
+                                                                             HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request);
         return new ResponseEntity<>(workflowService.getFlowableProcessDefinitions(jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 

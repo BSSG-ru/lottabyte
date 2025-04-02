@@ -766,6 +766,7 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
             .link(businessEntity.getEntity().getLink())
             .datatypeId(businessEntity.getEntity().getDatatypeId())
             .limits(businessEntity.getEntity().getLimits())
+            .relatedArtifacts(new ArrayList<>())
             .roles(businessEntity.getEntity().getRoles()).build();
 
         String dId = businessEntity.getEntity().getDomainId();
@@ -778,6 +779,10 @@ public class BusinessEntityService extends WorkflowableService<BusinessEntity> {
 
         searchableBusinessEntity.setDomains(Collections.singletonList(businessEntity.getEntity().getDomainId()));
 
+        searchableBusinessEntity.addRelatedArtifact("domain", businessEntity.getEntity().getDomainId());
+        searchableBusinessEntity.addRelatedArtifact("business_entity", businessEntity.getEntity().getParentId());
+        searchableBusinessEntity.addRelatedArtifacts("business_entity", businessEntity.getEntity().getSynonymIds());
+        searchableBusinessEntity.addRelatedArtifacts("business_entity", businessEntity.getEntity().getBeLinkIds());
         return searchableBusinessEntity;
     }
 }

@@ -24,6 +24,7 @@ import ru.bssg.lottabyte.core.model.reference.Reference;
 import ru.bssg.lottabyte.core.model.reference.ReferenceEntity;
 import ru.bssg.lottabyte.core.model.reference.ReferenceType;
 import ru.bssg.lottabyte.core.model.reference.UpdatableReferenceEntity;
+import ru.bssg.lottabyte.core.model.search.SearchableRelatedArtifact;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowType;
 import ru.bssg.lottabyte.core.ui.model.SearchColumn;
 import ru.bssg.lottabyte.core.ui.model.SearchColumnForJoin;
@@ -1289,6 +1290,9 @@ public class ProductService extends WorkflowableService<Product> {
     }
 
     public SearchableProduct getSearchableArtifact(Product product, UserDetails userDetails) {
+
+        List<SearchableRelatedArtifact> relatedArtifacts = new ArrayList<>();
+
         SearchableProduct sa = SearchableProduct.builder()
                 .id(product.getMetadata().getId())
                 .versionId(product.getMetadata().getVersionId())
@@ -1331,7 +1335,16 @@ public class ProductService extends WorkflowableService<Product> {
                 .link(product.getEntity().getLink())
                 .limits(product.getEntity().getLimits())
                 .limits_internal(product.getEntity().getLimits_internal())
+                .relatedArtifacts(new ArrayList<>())
                 .roles(product.getEntity().getRoles()).build();
+
+        sa.addRelatedArtifacts("indicator", product.getEntity().getIndicatorIds());
+        sa.addRelatedArtifacts("product", product.getEntity().getProductIds());
+        sa.addRelatedArtifacts("product_type", product.getEntity().getProductTypeIds());
+        sa.addRelatedArtifacts("product_supply_variant", product.getEntity().getProductSupplyVariantIds());
+        sa.addRelatedArtifact("domain", product.getEntity().getDomainId());
+        sa.addRelatedArtifact("entity_query", product.getEntity().getEntityQueryId());
+
         return sa;
     }
 

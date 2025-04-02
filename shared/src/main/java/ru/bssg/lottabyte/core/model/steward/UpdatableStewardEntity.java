@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper=false)
+@ToString(callSuper = true)
 public class UpdatableStewardEntity extends StewardEntity {
 
     public UpdatableStewardEntity(StewardEntity fromCopy) throws LottabyteException {

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.bssg.lottabyte.core.api.LottabyteException;
+import ru.bssg.lottabyte.core.model.ModeledObject;
 import ru.bssg.lottabyte.core.model.domain.Domain;
 import ru.bssg.lottabyte.core.model.domain.SearchableDomain;
 import ru.bssg.lottabyte.core.model.metaColumn.FlatMetaColumn;
@@ -22,9 +23,11 @@ import ru.bssg.lottabyte.coreapi.repository.MetaColumnRepository;
 import ru.bssg.lottabyte.coreapi.repository.MetaDatabaseRepository;
 import ru.bssg.lottabyte.coreapi.repository.MetaObjectRepository;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -101,7 +104,11 @@ public class MetadataService {
                 .modifiedBy(userDetails.getUid())
                 .effectiveStartDate(null)
                 .effectiveEndDate(null)
+                .relatedArtifacts(new ArrayList<>())
                 .build();
+
+        if (fmd.getSystemId() != null)
+            smb.addRelatedArtifact("system", fmd.getSystemId().toString());
 
         return smb;
     }
@@ -119,7 +126,11 @@ public class MetadataService {
                 .parentId(fmo.getParentId() == null ? null : fmo.getParentId().toString())
                 .metaDatabaseId(fmo.getMetaDatabaseId().toString())
                 .metaObjectType(fmo.getMetaObjectType())
+                .relatedArtifacts(new ArrayList<>())
                 .build();
+
+        smo.addRelatedArtifact("meta_database", fmo.getMetaDatabaseId().toString());
+        smo.addRelatedArtifact("meta_object", fmo.getParentId().toString());
 
         return smo;
     }
@@ -135,7 +146,12 @@ public class MetadataService {
                 .effectiveEndDate(null)
                 .metaObjectId(fmc.getMetaObjectId().toString())
                 .metaDatabaseId(fmc.getMetaDatabaseId().toString())
+                .relatedArtifacts(new ArrayList<>())
                 .build();
+
+        smc.addRelatedArtifact("meta_object", fmc.getMetaObjectId().toString());
+        smc.addRelatedArtifact("meta_database", fmc.getMetaDatabaseId().toString());
+        smc.addRelatedArtifact("entity", fmc.getEntityId().toString());
 
         return smc;
     }
@@ -164,20 +180,20 @@ public class MetadataService {
 
     public FlatMetaDatabase getMetaDatabaseById(UUID id, UserDetails userDetails) {
         FlatMetaDatabase fmb = metaDatabaseRepository.getById(id, userDetails);
-        fmb.setTags(tagService.getArtifactTags(id.toString(), userDetails));
+        fmb.setTags(tagService.getArtifactTags(id.toString(), userDetails).stream().map(ModeledObject::getName).collect(Collectors.toList()));
         fmb.setTasks(metaDatabaseRepository.getMetaDatabaseTasks(id, userDetails));
         return fmb;
     }
 
     public FlatMetaObject getMetaObjectById(UUID id, UserDetails userDetails) {
         FlatMetaObject fmo = metaObjectRepository.getById(id, userDetails);
-        fmo.setTags(tagService.getArtifactTags(id.toString(), userDetails));
+        fmo.setTags(tagService.getArtifactTags(id.toString(), userDetails).stream().map(ModeledObject::getName).collect(Collectors.toList()));
         return fmo;
     }
 
     public FlatMetaDatabase getMetaDatabaseVersionById(UUID id, Integer versionId, UserDetails userDetails) {
         FlatMetaDatabase fmb = metaDatabaseRepository.getVersionById(id, versionId, userDetails);
-        fmb.setTags(tagService.getArtifactTags(id.toString(), userDetails));
+        fmb.setTags(tagService.getArtifactTags(id.toString(), userDetails).stream().map(ModeledObject::getName).collect(Collectors.toList()));
         fmb.setTasks(metaDatabaseRepository.getMetaDatabaseTasks(id, userDetails));
         return fmb;
     }

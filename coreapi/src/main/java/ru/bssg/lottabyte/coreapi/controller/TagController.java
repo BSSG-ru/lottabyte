@@ -25,9 +25,11 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.TagCategoryService;
 import ru.bssg.lottabyte.coreapi.service.TagService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -50,6 +52,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 public class TagController {
     private final TagService tagService;
     private final TagCategoryService tagCategoryService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -75,7 +78,9 @@ public class TagController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId, limit, offset);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -104,7 +109,9 @@ public class TagController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -134,9 +141,9 @@ public class TagController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, query, limit, offset);
         List<FlatTag> list = tagService.searchTags(query, offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
     }
@@ -157,10 +164,11 @@ public class TagController {
     @RequestMapping(value = "/search2", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"tag_r"}, level = ANY_ROLE)
     public ResponseEntity<List<FlatTag>> searchTags2(
-            @RequestBody SimpleSearchRequest request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        List<FlatTag> list = tagService.searchTags(request.getQuery(), request.getOffset(), request.getLimit(), jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
+            @RequestBody SimpleSearchRequest sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        List<FlatTag> list = tagService.searchTags(sr.getQuery(), sr.getOffset(), sr.getLimit(), jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
     }
 
@@ -184,8 +192,9 @@ public class TagController {
             @Parameter(description = "Artifact ID of the Tag",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("tag_id") String tagId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, tagId);
         Tag tag = tagService.getTagById(tagId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(tag, HttpStatus.OK);
     }
@@ -206,8 +215,9 @@ public class TagController {
     @RequestMapping(value = "", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"tag_r", "tag_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<Tag> createTag(@RequestBody UpdatableTagEntity newTagEntity,
-                                         @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                                         @RequestHeader HttpHeaders headers,
+                                         HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newTagEntity);
         Tag tag = tagService.createTag(newTagEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(tag, HttpStatus.OK);
 
@@ -234,8 +244,9 @@ public class TagController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("tag_id") String tagId,
             @RequestBody UpdatableTagEntity tagEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, tagId, tagEntity);
         Tag tag = tagService.updateTag(tagId, tagEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(tag, HttpStatus.OK);
     }
@@ -260,8 +271,9 @@ public class TagController {
             @Parameter(description = "Artifact ID of the Tag",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("tag_id") String tagId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, tagId);
         tagService.deleteTagById(tagId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         ArchiveResponse resp = new ArchiveResponse();
         resp.setDeletedGuids(Collections.singletonList(tagId));
@@ -288,8 +300,9 @@ public class TagController {
             @Parameter(description = "Artifact ID of the Tag Category",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("tag_category_id") String tagCategoryId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, tagCategoryId);
         TagCategory tc = tagCategoryService.getTagCategoryById(tagCategoryId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(tc, HttpStatus.OK);
     }
@@ -314,8 +327,9 @@ public class TagController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset);
         PaginatedArtifactList<TagCategory> list = tagCategoryService.getTagCategoriesPaginated(offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
     }
@@ -336,7 +350,9 @@ public class TagController {
     @RequestMapping(value = "/category", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"tag_r", "tag_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<TagCategory> createTagCategory(@RequestBody UpdatableTagCategoryEntity newTagCategoryEntity,
-                                                         @RequestHeader HttpHeaders headers) throws LottabyteException {
+                                                         @RequestHeader HttpHeaders headers,
+                                                         HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newTagCategoryEntity);
         TagCategory tc = tagCategoryService.createTagCategory(newTagCategoryEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(tc, HttpStatus.OK);
     }
@@ -362,7 +378,9 @@ public class TagController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("tag_category_id") String tagCategoryId,
             @RequestBody UpdatableTagCategoryEntity tagCategoryEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, tagCategoryId, tagCategoryEntity);
         TagCategory tc = tagCategoryService.updateTagCategory(tagCategoryId, tagCategoryEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(tc, HttpStatus.OK);
     }
@@ -387,8 +405,9 @@ public class TagController {
             @Parameter(description = "Artifact ID of the Tag Category",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("tag_category_id") String tagCategoryId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, tagCategoryId);
         tagCategoryService.deleteTagCategoryById(tagCategoryId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         ArchiveResponse resp = new ArchiveResponse();
         resp.setDeletedGuids(Collections.singletonList(tagCategoryId));
@@ -418,9 +437,10 @@ public class TagController {
                     example = "domain")
             @PathVariable("artifact_type") String artifactType,
             @RequestBody TagEntity tagEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
-
+        apiLogService.logApiCall(request, artifactId, artifactType, tagEntity);
         tagService.linkToArtifact(artifactId, artifactType, tagEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
 
         return new ResponseEntity<>(true, HttpStatus.OK);
@@ -449,8 +469,10 @@ public class TagController {
                     example = "domain")
             @PathVariable("artifact_type") String artifactType,
             @RequestBody TagEntity tagEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId, artifactType, tagEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 

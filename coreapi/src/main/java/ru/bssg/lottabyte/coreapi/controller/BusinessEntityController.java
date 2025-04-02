@@ -29,8 +29,10 @@ import ru.bssg.lottabyte.core.ui.model.SearchResponse;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.BusinessEntityService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 
@@ -52,6 +54,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 public class BusinessEntityController {
 
     private final BusinessEntityService businessEntityService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -74,8 +77,8 @@ public class BusinessEntityController {
             @Parameter(description = "Artifact ID of the Business Entity",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("business_entity_id") String businessEntityId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, businessEntityId);
         return new ResponseEntity<>(businessEntityService.getBusinessEntityById(businessEntityId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -101,8 +104,9 @@ public class BusinessEntityController {
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @Parameter(description = "Artifact state.")
             @RequestParam(value="state", defaultValue = "PUBLISHED") String artifactState,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset, artifactState);
         return new ResponseEntity<>(businessEntityService.getBusinessEntitiesPaginated(offset, limit,
                 artifactState, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -124,8 +128,9 @@ public class BusinessEntityController {
     @Secured(roles = {"business_entity_r", "business_entity_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<BusinessEntity> createBusinessEntity(
             @RequestBody UpdatableBusinessEntityEntity newBusinessEntityEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newBusinessEntityEntity);
         return new ResponseEntity<>(businessEntityService.createBusinessEntity(newBusinessEntityEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -150,8 +155,9 @@ public class BusinessEntityController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("business_entity_id") String businessEntityId,
             @RequestBody UpdatableBusinessEntityEntity businessEntityEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, businessEntityId, businessEntityEntity);
         return new ResponseEntity<>(businessEntityService.patchBusinessEntity(businessEntityId, businessEntityEntity, false, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -175,7 +181,9 @@ public class BusinessEntityController {
             @Parameter(description = "Artifact ID of the Business Entity to be deleted",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("business_entity_id") String businessEntityId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, businessEntityId);
         BusinessEntity result = businessEntityService.deleteBusinessEntity(businessEntityId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -190,20 +198,22 @@ public class BusinessEntityController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"business_entity_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatBusinessEntity>> searchBusinessEntity(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        return new ResponseEntity<>(businessEntityService.searchBusinessEntity(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        return new ResponseEntity<>(businessEntityService.searchBusinessEntity(sr, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
     @Hidden
     @RequestMapping(value = "/tree", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"business_entity_r"}, level = ANY_ROLE)
     public ResponseEntity<List<BusinessEntityTreeNode>> getBETree(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        return new ResponseEntity<>(businessEntityService.getBETree(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        return new ResponseEntity<>(businessEntityService.getBETree(sr, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
     @Operation(
@@ -227,8 +237,8 @@ public class BusinessEntityController {
             @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, businessEntityId, limit, offset);
         return new ResponseEntity<>(businessEntityService.getBusinessEntityVersions(businessEntityId,
                 offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -254,7 +264,8 @@ public class BusinessEntityController {
             @PathVariable("business_entity_id") String businessEntityId,
             @Parameter(description = "Version ID of the Business Entity", example = "1")
             @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, businessEntityId, versionId);
         return ResponseEntity.ok(businessEntityService.getBusinessEntityVersionById(businessEntityId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
@@ -273,7 +284,8 @@ public class BusinessEntityController {
     public ResponseEntity<BusinessEntity> restoreBusinessEntityVersionById(
             @Parameter(description = "ID of the BE", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("be_id") String beId,
             @Parameter(description = "Version ID of the BE", example = "1") @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, beId, versionId);
         return ResponseEntity.ok(businessEntityService.restoreBusinessEntityVersionById(beId, versionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
@@ -297,8 +309,9 @@ public class BusinessEntityController {
             @Parameter(description = "ID of the BE",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("be_id") String beId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, beId);
         BusinessEntity result = businessEntityService.archiveBusinessEntityById(beId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -328,8 +341,9 @@ public class BusinessEntityController {
             @Parameter(description = "ID of the BE",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("be_id") String beId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, beId);
         BusinessEntity result = businessEntityService.restoreBusinessEntityById(beId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(result, HttpStatus.OK);
     }

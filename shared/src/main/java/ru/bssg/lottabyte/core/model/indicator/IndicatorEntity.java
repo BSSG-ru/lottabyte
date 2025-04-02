@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import ru.bssg.lottabyte.core.model.ArtifactType;
 import ru.bssg.lottabyte.core.model.Entity;
+import ru.bssg.lottabyte.core.model.artifact.Artifact;
 import ru.bssg.lottabyte.core.model.entitySample.EntitySampleDQRule;
 import ru.bssg.lottabyte.core.model.reference.Reference;
 

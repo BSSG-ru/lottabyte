@@ -16,7 +16,5 @@ public class ApplicationConfig {
     private String externalBucketName;
     @Value("${storage_path}")
     private String storagePath;
-    @Value("${model_json}")
-    private String modelJson;
 
 }

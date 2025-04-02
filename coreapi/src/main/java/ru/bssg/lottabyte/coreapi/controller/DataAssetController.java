@@ -31,8 +31,10 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.DataAssetService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -54,6 +56,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class DataAssetController {
     private final DataAssetService dataAssetService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -76,7 +79,9 @@ public class DataAssetController {
             @Parameter(description = "Artifact ID of the Data Asset",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("data_asset_id") String dataAssetId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, dataAssetId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -106,8 +111,9 @@ public class DataAssetController {
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @Parameter(description = "Artifact state.")
             @RequestParam(value="state", defaultValue = "PUBLISHED") String artifactState,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset, artifactState);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -134,8 +140,10 @@ public class DataAssetController {
             @Parameter(description = "id of the entity",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_id") String entityId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -159,7 +167,9 @@ public class DataAssetController {
     @Secured(roles = {"active_r", "active_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<DataAsset> createDataAsset(
             @RequestBody UpdatableDataAssetEntity newDataAssetEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newDataAssetEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(dataAssetService.createDataAsset(newDataAssetEntity, userDetails), HttpStatus.OK);
@@ -185,7 +195,9 @@ public class DataAssetController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("data_asset_id") String dataAssetId,
             @RequestBody UpdatableDataAssetEntity dataAssetEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, dataAssetId, dataAssetEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(dataAssetService.patchDataAsset(dataAssetId, dataAssetEntity, false, userDetails), HttpStatus.OK);
@@ -210,7 +222,9 @@ public class DataAssetController {
             @Parameter(description = "Artifact ID of the Data Asset",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("data_asset_id") String dataAssetId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, dataAssetId);
         DataAsset result = dataAssetService.deleteDataAsset(dataAssetId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -225,12 +239,14 @@ public class DataAssetController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"active_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDataAsset>> searchDataAssets(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails ud = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatDataAsset> res = dataAssetService.searchDataAssets(request, ud);
+        SearchResponse<FlatDataAsset> res = dataAssetService.searchDataAssets(sr, ud);
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
 
@@ -238,13 +254,15 @@ public class DataAssetController {
     @RequestMapping(value = "/search_by_be/{be_id}", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"lo_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDataAsset>> searchDataAssetsByBE(
-            @RequestBody SearchRequestWithJoin request,
+            @RequestBody SearchRequestWithJoin sr,
             @PathVariable("be_id") String beId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr, beId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatDataAsset> res = dataAssetService.searchDataAssetsByBE(request, beId, userDetails);
+        SearchResponse<FlatDataAsset> res = dataAssetService.searchDataAssetsByBE(sr, beId, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -270,8 +288,8 @@ public class DataAssetController {
             @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, assetId, limit, offset);
         PaginatedArtifactList<DataAsset> list = dataAssetService.getDataAssetVersions(assetId,
                 offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
@@ -298,7 +316,9 @@ public class DataAssetController {
             @PathVariable("data_asset_id") String dataAssetId,
             @Parameter(description = "Version ID of the Data Asset", example = "1")
             @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, dataAssetId, versionId);
         return ResponseEntity.ok(dataAssetService.getDataAssetVersionById(dataAssetId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
@@ -317,7 +337,8 @@ public class DataAssetController {
     public ResponseEntity<DataAsset> restoreDataAssetVersionById(
             @Parameter(description = "ID of the Asset", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("asset_id") String assetId,
             @Parameter(description = "Version ID of the Asset", example = "1") @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, assetId, versionId);
         return ResponseEntity.ok(dataAssetService.restoreDataAssetVersionById(assetId, versionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
@@ -341,8 +362,9 @@ public class DataAssetController {
             @Parameter(description = "ID of the Data asset",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("asset_id") String assetId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, assetId);
         DataAsset result = dataAssetService.archiveDataAssetById(assetId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -372,8 +394,9 @@ public class DataAssetController {
             @Parameter(description = "ID of the Data asset",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("asset_id") String assetId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, assetId);
         DataAsset result = dataAssetService.restoreDataAssetById(assetId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(result, HttpStatus.OK);
     }

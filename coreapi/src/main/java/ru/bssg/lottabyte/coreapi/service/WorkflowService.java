@@ -59,6 +59,7 @@ public class WorkflowService {
     private final DQRuleService dqRuleService;
     private final EntityQueryService entityQueryService;
     private final UserService userService;
+    private final ETLService etlService;
 
     // Flowable services
     private final RuntimeService runtimeService;
@@ -77,7 +78,8 @@ public class WorkflowService {
             EntityQueryService entityQueryService, DQRuleService dqRuleService,
             RuntimeService runtimeService, IdentityService identityService,
             org.flowable.engine.TaskService taskService, FormService formService,
-            UserService userService, RepositoryService repositoryService) {
+            UserService userService, RepositoryService repositoryService,
+            ETLService etlService) {
         this.workflowRepository = workflowRepository;
         this.workflowTaskActionService = workflowTaskActionService;
         this.domainService = domainService;
@@ -95,6 +97,7 @@ public class WorkflowService {
         this.formService = formService;
         this.userService = userService;
         this.repositoryService = repositoryService;
+        this.etlService = etlService;
     }
 
     public boolean isWorkflowEnabled(ArtifactType artifactType) {
@@ -108,6 +111,7 @@ public class WorkflowService {
             case entity_query:
             case product:
             case dq_rule:
+            case etl:
                 return true;
             default:
                 return false;
@@ -371,10 +375,10 @@ public class WorkflowService {
             return entityQueryService;
         } else if (ArtifactType.product.equals(artifactType)) {
             return productService;
-
         } else if (ArtifactType.dq_rule.equals(artifactType)) {
             return dqRuleService;
-
+        } else if (ArtifactType.etl.equals(artifactType)) {
+            return etlService;
         } else {
             return null;
         }

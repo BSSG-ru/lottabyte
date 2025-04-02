@@ -30,9 +30,11 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.EntityService;
 import ru.bssg.lottabyte.coreapi.service.ProductService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +52,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class ProductController {
         private final ProductService productService;
+        private final APILogService apiLogService;
         private final JwtHelper jwtHelper;
 
         @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Gets Product by given guid.", description = "This method can be used to get Product by given guid.", operationId = "get_product_by_id")
@@ -64,9 +67,10 @@ public class ProductController {
         @RequestMapping(value = "/{product_id}", method = RequestMethod.GET, produces = { "application/json" })
         @Secured(roles = { "product_r" }, level = ANY_ROLE)
         public ResponseEntity<Product> getProductById(
-                        @Parameter(description = "Artifact ID of the Product", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_id") String productId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                @Parameter(description = "Artifact ID of the Product", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_id") String productId,
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId);
                 return new ResponseEntity<>(productService.getProductById(productId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -86,8 +90,9 @@ public class ProductController {
                         @Parameter(description = "The maximum number of Products to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "10") Integer limit,
                         @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
                         @Parameter(description = "Artifact state.") @RequestParam(value = "state", defaultValue = "PUBLISHED") String artifactState,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, limit, offset, artifactState);
                 return new ResponseEntity<>(productService.getAllProductsPaginated(offset, limit, artifactState,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -106,8 +111,9 @@ public class ProductController {
                         @PathVariable("product_id") String productId,
                         @Parameter(description = "The maximum number of Products to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "1000") Integer limit,
                         @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId, limit, offset);
                 PaginatedArtifactList<Product> list = productService.getProductVersions(
                                 productId, offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(list, HttpStatus.OK);
@@ -128,7 +134,9 @@ public class ProductController {
         public ResponseEntity<Product> getProductVersionById(
                         @Parameter(description = "ID of the Product", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_id") String productId,
                         @Parameter(description = "Version ID of the Product", example = "1") @PathVariable("version_id") Integer versionId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId, versionId);
                 return ResponseEntity.ok(productService.getProductVersionById(productId, versionId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
         }
@@ -148,7 +156,9 @@ public class ProductController {
         public ResponseEntity<Product> restoreProductVersionById(
                         @Parameter(description = "ID of the Product", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_id") String productId,
                         @Parameter(description = "Version ID of the Product", example = "1") @PathVariable("version_id") Integer versionId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId, versionId);
                 return ResponseEntity.ok(productService.restoreProductVersionById(productId, versionId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
         }
@@ -164,7 +174,9 @@ public class ProductController {
         @RequestMapping(value = "", method = RequestMethod.POST, produces = { "application/json" })
         @Secured(roles = { "product_r", "product_u" }, level = ALL_ROLES_STRICT)
         public ResponseEntity<Product> createProduct(@RequestBody UpdatableProductEntity newProductEntity,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                                                     HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, newProductEntity);
                 return new ResponseEntity<>(productService.createProduct(newProductEntity,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -182,7 +194,9 @@ public class ProductController {
         public ResponseEntity<Product> patchProduct(
                         @Parameter(description = "Artifact ID of the Entity", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_id") String productId,
                         @RequestBody UpdatableProductEntity productEntity,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId, productEntity);
                 return new ResponseEntity<>(productService.updateProduct(productId, productEntity, false,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -200,7 +214,9 @@ public class ProductController {
         @Secured(roles = { "product_r", "product_u" }, level = ALL_ROLES_STRICT)
         public ResponseEntity<?> deleteProduct(
                         @Parameter(description = "Artifact ID of the Product", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_id") String productId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId);
                 Product result = productService.deleteProductById(productId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 if (result == null) {
@@ -216,12 +232,14 @@ public class ProductController {
         @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json" })
         @Secured(roles = { "product_r" }, level = ANY_ROLE)
         public ResponseEntity<SearchResponse<FlatProduct>> searchProducts(
-                        @RequestBody SearchRequestWithJoin request,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestBody SearchRequestWithJoin sr,
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, sr);
                 String token = HttpUtils.getToken(headers);
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-                SearchResponse<FlatProduct> res = productService.searchProducts(request, userDetails);
+                SearchResponse<FlatProduct> res = productService.searchProducts(sr, userDetails);
 
                 return new ResponseEntity<>(res, HttpStatus.OK);
         }
@@ -230,12 +248,14 @@ public class ProductController {
         @RequestMapping(value = "/type/search", method = RequestMethod.POST, produces = { "application/json" })
         @Secured(roles = { "product_r" }, level = ANY_ROLE)
         public ResponseEntity<SearchResponse<FlatProductType>> searchProductTypes(
-                        @RequestBody SearchRequestWithJoin request,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestBody SearchRequestWithJoin sr,
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, sr);
                 String token = HttpUtils.getToken(headers);
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-                SearchResponse<FlatProductType> res = productService.searchProductTypes(request, userDetails);
+                SearchResponse<FlatProductType> res = productService.searchProductTypes(sr, userDetails);
 
                 return new ResponseEntity<>(res, HttpStatus.OK);
         }
@@ -245,12 +265,14 @@ public class ProductController {
                         "application/json" })
         @Secured(roles = { "product_r" }, level = ANY_ROLE)
         public ResponseEntity<SearchResponse<FlatProductSupplyVariant>> searchProductSupplyVariants(
-                        @RequestBody SearchRequestWithJoin request,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestBody SearchRequestWithJoin sr,
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, sr);
                 String token = HttpUtils.getToken(headers);
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-                SearchResponse<FlatProductSupplyVariant> res = productService.searchProductSupplyVariants(request,
+                SearchResponse<FlatProductSupplyVariant> res = productService.searchProductSupplyVariants(sr,
                                 userDetails);
 
                 return new ResponseEntity<>(res, HttpStatus.OK);
@@ -270,8 +292,9 @@ public class ProductController {
         @Secured(roles = { "product_r" }, level = ANY_ROLE)
         public ResponseEntity<ProductType> getProductTypeById(
                         @Parameter(description = "Artifact ID of the Product Type", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_type_id") String productTypeId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productTypeId);
                 return new ResponseEntity<>(productService.getProductTypeById(productTypeId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -290,8 +313,9 @@ public class ProductController {
         @Secured(roles = { "product_r" }, level = ANY_ROLE)
         public ResponseEntity<ProductSupplyVariant> getProductSupplyVariantById(
                         @Parameter(description = "Artifact ID of the Product Supply Variant", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("product_supply_variant_id") String productSupplyVariantId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productSupplyVariantId);
                 return new ResponseEntity<>(productService.getProductSupplyVariantById(productSupplyVariantId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -309,7 +333,9 @@ public class ProductController {
         @Secured(roles = { "product_r" }, level = ANY_ROLE)
         public ResponseEntity<List<EntitySampleDQRule>> getDQRules(
                         @PathVariable("product_id") String productId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -334,8 +360,9 @@ public class ProductController {
         public ResponseEntity<EntitySampleDQRule> createDQRule(
                         @PathVariable("product_id") String productId,
                         @RequestBody UpdatableEntitySampleDQRule newEntitySampleDQRuleEntity,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId, newEntitySampleDQRuleEntity);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -362,8 +389,9 @@ public class ProductController {
                 @Parameter(description = "ID of the Product",
                         example = "aa0e33f5-3108-4d45-a530-0307458362d4")
                 @PathVariable("product_id") String productId,
-                @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId);
                 Product result = productService.archiveProductById(productId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 if (result == null) {
                         ArchiveResponse resp = new ArchiveResponse();
@@ -393,8 +421,9 @@ public class ProductController {
                 @Parameter(description = "ID of the Product",
                         example = "aa0e33f5-3108-4d45-a530-0307458362d4")
                 @PathVariable("product_id") String productId,
-                @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, productId);
                 Product result = productService.restoreProductById(productId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(result, HttpStatus.OK);
         }

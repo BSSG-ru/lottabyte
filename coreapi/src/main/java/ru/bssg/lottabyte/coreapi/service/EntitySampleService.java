@@ -1085,7 +1085,7 @@ public class EntitySampleService {
                         .effectiveEndDate(entitySample.getMetadata().getEffectiveEndDate())
                         .tags(Helper.getEmptyListIfNull(entitySample.getMetadata().getTags()).stream()
                                         .map(x -> x.getName()).collect(Collectors.toList()))
-
+                        .relatedArtifacts(new ArrayList<>())
                         .entityId(entitySample.getEntity().getEntityId())
                         .systemId(entitySample.getEntity().getSystemId())
                         .entityQueryId(entitySample.getEntity().getEntityQueryId())
@@ -1099,6 +1099,11 @@ public class EntitySampleService {
                 sa.setPropertyNames(Helper.getEmptyListIfNull(entitySampleRepository.getAllSamplePropertyBySampleId(entitySample.getMetadata().getId(), userDetails)
                         .stream().map(esp -> esp.getName()).collect(Collectors.toList())));
 
+                sa.addRelatedArtifact("entity", entitySample.getEntity().getEntityId());
+                sa.addRelatedArtifact("system", entitySample.getEntity().getSystemId());
+                sa.addRelatedArtifact("entity_query", entitySample.getEntity().getEntityQueryId());
+                if (entitySample.getEntity().getDqRules() != null)
+                        sa.addRelatedArtifacts("dq_rule", entitySample.getEntity().getDqRules().stream().map(ModeledObject::getId).collect(Collectors.toList()));
                 return sa;
         }
 

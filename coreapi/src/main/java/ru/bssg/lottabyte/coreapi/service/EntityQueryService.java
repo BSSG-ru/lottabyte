@@ -612,7 +612,7 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
         .effectiveEndDate(entityQuery.getMetadata().getEffectiveEndDate())
         .tags(Helper.getEmptyListIfNull(entityQuery.getMetadata().getTags()).stream()
                 .map(x -> x.getName()).collect(Collectors.toList()))
-
+        .relatedArtifacts(new ArrayList<>())
         .queryText(entityQuery.getEntity().getQueryText())
         .entityId(entityQuery.getEntity().getEntityId())
         .systemId(entityQuery.getEntity().getSystemId()).build();
@@ -631,6 +631,9 @@ public class EntityQueryService extends WorkflowableService<EntityQuery> {
             if (ent != null)
                 sa.setEntityName(ent.getName());
         }
+
+        sa.addRelatedArtifact("system", entityQuery.getEntity().getSystemId());
+        sa.addRelatedArtifact("entity", entityQuery.getEntity().getEntityId());
 
         return sa;
     }

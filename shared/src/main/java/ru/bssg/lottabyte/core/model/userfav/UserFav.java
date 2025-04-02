@@ -16,6 +16,5 @@ import ru.bssg.lottabyte.core.model.FlatModeledObject;
 public class UserFav extends FlatModeledObject {
     private Integer userId;
     private String artifactId;
-    private String artifactType;
     private String artifactName;
 }

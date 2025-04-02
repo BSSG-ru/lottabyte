@@ -30,7 +30,7 @@ public class UserFavService {
         List<UserFav> res = userFavRepository.getUserFavs(Integer.parseInt(userDetails.getUid()), artifactType, userDetails);
 
         for (UserFav uf : res) {
-            uf.setArtifactName(artifactRepository.getArtifactName(ArtifactType.valueOf(uf.getArtifactType()), uf.getArtifactId(), userDetails));
+            uf.setArtifactName(artifactRepository.getArtifactName(uf.getArtifactType(), uf.getArtifactId(), userDetails));
         }
 
         return res;

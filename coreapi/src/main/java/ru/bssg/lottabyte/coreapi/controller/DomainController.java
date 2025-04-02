@@ -9,7 +9,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -18,13 +17,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.model.ArchiveResponse;
-import ru.bssg.lottabyte.core.model.FlatModeledObject;
 import ru.bssg.lottabyte.core.model.PaginatedArtifactList;
 import ru.bssg.lottabyte.core.model.domain.Domain;
 import ru.bssg.lottabyte.core.model.domain.FlatDomain;
 import ru.bssg.lottabyte.core.model.domain.UpdatableDomainEntity;
-import ru.bssg.lottabyte.core.model.product.Product;
-import ru.bssg.lottabyte.core.ui.model.SearchRequest;
 import ru.bssg.lottabyte.core.ui.model.SearchRequestWithJoin;
 import ru.bssg.lottabyte.core.ui.model.SearchResponse;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
@@ -32,9 +28,9 @@ import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
 import ru.bssg.lottabyte.coreapi.service.DomainService;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 
@@ -56,12 +52,13 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 public class DomainController {
     private final DomainService domainService;
     private JwtHelper jwtHelper;
-
+    private APILogService apiLogService;
 
     @Autowired
-    public DomainController(DomainService domainService, JwtHelper jwtHelper) {
+    public DomainController(DomainService domainService, JwtHelper jwtHelper, APILogService apiLogService) {
         this.domainService = domainService;
         this.jwtHelper = jwtHelper;
+        this.apiLogService = apiLogService;
     }
 
     @Operation(
@@ -84,7 +81,8 @@ public class DomainController {
             @Parameter(description = "ID of the Domain",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("domain_id") String domainId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId);
 
         Domain d = domainService.getDomainById(domainId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(d, HttpStatus.OK);
@@ -113,8 +111,8 @@ public class DomainController {
             @Parameter(description = "Version ID of the Domain",
                     example = "1")
             @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId, versionId);
         Domain d = domainService.getDomainVersionById(domainId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
@@ -134,7 +132,8 @@ public class DomainController {
     public ResponseEntity<Domain> restoreDomainVersionById(
             @Parameter(description = "ID of the Domain", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("domain_id") String domainId,
             @Parameter(description = "Version ID of the Domain", example = "1") @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId, versionId);
         return ResponseEntity.ok(domainService.restoreDomainVersionById(domainId, versionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
@@ -160,8 +159,8 @@ public class DomainController {
             @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId, limit, offset);
         PaginatedArtifactList<Domain> list = domainService.getDomainVersions(domainId, offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
     }
@@ -189,7 +188,8 @@ public class DomainController {
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @Parameter(description = "Artifact state.")
             @RequestParam(value="state", defaultValue = "PUBLISHED") String artifactState,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset, artifactState);
 
         PaginatedArtifactList<Domain> list = domainService.getDomainsPaginated(offset, limit, artifactState, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
@@ -211,7 +211,8 @@ public class DomainController {
     @RequestMapping(value = "", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"domain_r", "domain_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<Domain> createDomain(@RequestBody UpdatableDomainEntity newDomainEntity,
-                                               @RequestHeader HttpHeaders headers) throws LottabyteException {
+                                               @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newDomainEntity);
         Domain d = domainService.createDomain(newDomainEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
@@ -236,8 +237,8 @@ public class DomainController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("domain_id") String domainId,
             @RequestBody UpdatableDomainEntity domainEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId, domainEntity);
         Domain d = domainService.updateDomain(domainId, domainEntity, false, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
@@ -261,8 +262,8 @@ public class DomainController {
             @Parameter(description = "ID of the Domain",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("domain_id") String domainId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId);
         Domain result = domainService.deleteDomainById(domainId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -292,8 +293,8 @@ public class DomainController {
             @Parameter(description = "ID of the Domain",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("domain_id") String domainId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId);
         Domain result = domainService.archiveDomainById(domainId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -323,8 +324,8 @@ public class DomainController {
             @Parameter(description = "ID of the Domain",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("domain_id") String domainId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId);
         Domain result = domainService.restoreDomainById(domainId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(result, HttpStatus.OK);
     }
@@ -334,8 +335,8 @@ public class DomainController {
     @Secured(roles = {"domain_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDomain>> searchDomains(
             @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest httpServletRequest) throws LottabyteException {
+        apiLogService.logApiCall(httpServletRequest, request.toString());
         return ResponseEntity.ok(domainService.searchDomains(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
@@ -351,8 +352,8 @@ public class DomainController {
     @Secured(roles = { "domain_r" }, level = ANY_ROLE)
     public ResponseEntity<List<UserDetails>> getResponsiblesById(
             @PathVariable("domain_id") String domainId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId);
         List<UserDetails> list = domainService.getResponsibles(
                 domainId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);

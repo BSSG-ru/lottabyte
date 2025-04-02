@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
 import ru.bssg.lottabyte.core.model.search.SearchableCustomAttribute;
+import ru.bssg.lottabyte.core.model.search.SearchableRelatedArtifact;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,8 +37,8 @@ public class SearchableBusinessEntity extends SearchableArtifact {
     protected String roles;
 
     @Builder
-    public SearchableBusinessEntity(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String techName, String definition, String regulation, List<String> altNames, List<String> synonymIds, List<String> beLinkIds, String domainId, String domainName, String formula, String examples, String link, String datatypeId, String limits, String roles) {
-        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableBusinessEntity(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String techName, String definition, String regulation, List<String> altNames, List<String> synonymIds, List<String> beLinkIds, String domainId, String domainName, String formula, String examples, String link, String datatypeId, String limits, String roles, List<SearchableRelatedArtifact> relatedArtifacts) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains, relatedArtifacts);
         this.techName = techName;
         this.definition = definition;
         this.regulation = regulation;

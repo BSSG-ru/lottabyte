@@ -21,8 +21,6 @@ import org.springframework.web.multipart.MultipartFile;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
-import ru.bssg.lottabyte.core.model.domain.Domain;
-import ru.bssg.lottabyte.core.model.domain.FlatDomain;
 import ru.bssg.lottabyte.core.model.reference.ReferenceType;
 import ru.bssg.lottabyte.core.model.relation.Relation;
 import ru.bssg.lottabyte.core.model.tag.Tag;
@@ -49,7 +47,6 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static ru.bssg.lottabyte.coreapi.util.QueryHelper.getSearchSQLParts;
 
@@ -64,6 +61,34 @@ public class ArtifactRepository {
     private final TagRepository tagRepository;
     private final AmazonS3 amazonS3;
     private final ApplicationConfig applicationConfig;
+
+    public class FlatModeledObjectRowMapper implements RowMapper<FlatModeledObject> {
+        @Override
+        public FlatModeledObject mapRow(ResultSet rs, int rowNum) throws SQLException {
+            FlatModeledObject o = new FlatModeledObject();
+            o.setId(rs.getString("id"));
+            o.setName(rs.getString("name"));
+            o.setArtifactType(ArtifactType.valueOf(rs.getString("artifact_type")));
+            o.setModified(rs.getTimestamp("modified").toLocalDateTime());
+            o.setCreated(rs.getTimestamp("created").toLocalDateTime());
+            return o;
+        }
+    }
+
+    public  class FlatArtifactRowMapper implements RowMapper<FlatArtifact> {
+
+        @Override
+        public FlatArtifact mapRow(ResultSet rs, int rowNum) throws SQLException {
+            FlatArtifact o = new FlatArtifact();
+            o.setId(rs.getString("id"));
+            o.setName(rs.getString("name"));
+            o.setArtifactType(ArtifactType.valueOf(rs.getString("artifact_type")));
+            o.setModified(rs.getTimestamp("modified").toLocalDateTime());
+            o.setCreated(rs.getTimestamp("created").toLocalDateTime());
+            o.setType(rs.getString("type"));
+            return o;
+        }
+    }
 
     public Integer getSettingsCount(String type, UserDetails userDetails) {
         Integer res = 0;
@@ -101,6 +126,7 @@ public class ArtifactRepository {
             subqueries.add(getSearchSubQuery(ArtifactType.indicator, userDetails));
             subqueries.add(getSearchSubQuery(ArtifactType.business_entity, userDetails));
             subqueries.add(getSearchSubQuery(ArtifactType.product, userDetails));
+            subqueries.add(getSearchSubQuery(ArtifactType.etl, userDetails));
 
             String query = "SELECT * FROM ((" + org.apache.commons.lang3.StringUtils.join(subqueries, ") UNION (")
                     + ")) AS tbl1 ";
@@ -738,12 +764,16 @@ public class ArtifactRepository {
                         },
                         UUID.fromString(artifactId)
                 );
-                break;
+                break; 
             case data_asset:
-                jdbcTemplate.query("SELECT e.id as e_id, be.id AS be_id, be.domain_id as be_domain_id FROM da_" + userDetails.getTenant() + ".data_asset da "
+                jdbcTemplate.query("SELECT e.id as e_id, be.id AS be_id, be.domain_id as be_domain_id, etl_target.id AS etl_target_id, etl_source.id AS etl_source_id FROM da_" + userDetails.getTenant() + ".data_asset da "
                         + " LEFT JOIN da_" + userDetails.getTenant() + ".entity e ON da.entity_id=e.id AND e.state='PUBLISHED'"
                         + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r5 ON r5.source_id=e.id AND reference_type='DATA_ENTITY_TO_BUSINESS_ENTITY'"
                         + " LEFT JOIN da_" + userDetails.getTenant() + ".business_entity be ON be.id=r5.target_id AND be.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r8 ON r8.source_id=da.id AND r8.reference_type='SOURCE_TO_ETL'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".etl etl_target ON r8.target_id=etl_target.id AND etl_target.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r9 ON r9.target_id=da.id AND r9.reference_type='ETL_TO_TARGET'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".etl etl_source ON r9.source_id=etl_source.id AND etl_source.state='PUBLISHED'"
                         + " WHERE da.id=?"
                         , new RowCallbackHandler() {
                             @Override
@@ -751,6 +781,8 @@ public class ArtifactRepository {
                                 String entityId = rs.getString("e_id");
                                 String beId = rs.getString("be_id");
                                 String beDomainId = rs.getString("be_domain_id");
+                                String etlSourceId = rs.getString("etl_source_id");
+                                String etlTargetId = rs.getString("etl_target_id");
 
                                 if (entityId != null && !nodeIds.contains(entityId)) {
                                     nodeIds.add(entityId);
@@ -765,6 +797,16 @@ public class ArtifactRepository {
                                 if (beDomainId != null && !nodeIds.contains(beDomainId)) {
                                     nodeIds.add(beDomainId);
                                     rowsTop.get(0).add(new ArtifactModelNode(beDomainId, "domain"));
+                                }
+
+                                if (etlSourceId != null && !nodeIds.contains(etlSourceId)) {
+                                    nodeIds.add(etlSourceId);
+                                    cols.get(6).add(new ArtifactModelNode(etlSourceId, "etl", "left"));
+                                }
+
+                                if (etlTargetId != null && !nodeIds.contains(etlTargetId)) {
+                                    nodeIds.add(etlTargetId);
+                                    cols.get(6).add(new ArtifactModelNode(etlTargetId, "etl", "right"));
                                 }
 
                                 if (entityId != null) {
@@ -1024,7 +1066,7 @@ public class ArtifactRepository {
                 jdbcTemplate.query(
                         "SELECT eq.id as entity_query_id, be.id as be_id, p.entity_query_id AS p_eq_id, s.id as system_id, "
                             + "p2.id AS p2_id, p.id AS p_id, e.id as entity_id, d2.id as domain_id, "
-                            + "da.id as data_asset_id, es.id as da_es_id, es_eq.id as es_eq_id, mc.meta_object_id FROM da_" + userDetails.getTenant()
+                            + "da.id as data_asset_id, es.id as da_es_id, es_eq.id as es_eq_id, mc.meta_object_id, etl_source.id AS etl_source_id, etl_target.id AS etl_target_id FROM da_" + userDetails.getTenant()
                             + ".product p"
 
                             + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_query eq ON p.entity_query_id=eq.id AND eq.state='PUBLISHED'"
@@ -1052,6 +1094,11 @@ public class ArtifactRepository {
                             + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r ON r.source_id=esp.id AND r.reference_type='SAMPLE_PROPERTY_TO_META_COLUMN'"
                             + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_column mc ON r.target_id=mc.id"
 
+                            + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r18 ON r18.source_id=p.id AND r18.reference_type='SOURCE_TO_ETL'"
+                            + " LEFT JOIN da_" + userDetails.getTenant() + ".etl etl_target ON r18.target_id=etl_target.id AND etl_target.state='PUBLISHED'"
+                            + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r19 ON r19.target_id=p.id AND r19.reference_type='ETL_TO_TARGET'"
+                            + " LEFT JOIN da_" + userDetails.getTenant() + ".etl etl_source ON r19.source_id=etl_source.id AND etl_source.state='PUBLISHED'"
+
                             + " WHERE p.id IN ('" + StringUtils.join(artifactIds.toArray(), "','") + "')",
                         new RowCallbackHandler() {
                             @Override
@@ -1068,6 +1115,8 @@ public class ArtifactRepository {
                                 String assetSampleId = rs.getString("da_es_id");
                                 String sampleQueryId = rs.getString("es_eq_id");
                                 String metaObjectId = rs.getString("meta_object_id");
+                                String etlSourceId = rs.getString("etl_source_id");
+                                String etlTargetId = rs.getString("etl_target_id");
 
                                 if (prodQueryId != null) {
                                     if (!productToQueryIds.containsKey(productId))
@@ -1080,6 +1129,14 @@ public class ArtifactRepository {
                                     rowsTop.get(0).add(new ArtifactModelNode(domainId, "domain"));
 
                                     //addArtifactModelLink(linkedNodeIds, artifactId, productId, domainId, userDetails);
+                                }
+                                if (etlSourceId != null && !nodeIds.contains(etlSourceId)) {
+                                    nodeIds.add(etlSourceId);
+                                    cols.get(6).add(new ArtifactModelNode(etlSourceId, "etl", "left"));
+                                }
+                                if (etlTargetId != null && !nodeIds.contains(etlTargetId)) {
+                                    nodeIds.add(etlTargetId);
+                                    cols.get(6).add(new ArtifactModelNode(etlTargetId, "etl", "right"));
                                 }
                                 if (beId != null && !nodeIds.contains(beId)) {
                                     nodeIds.add(beId);
@@ -1463,6 +1520,118 @@ public class ArtifactRepository {
                         }
                     }, UUID.fromString(artifactId));
                 break;
+            case etl:
+                List<String> leftProdIds = new ArrayList<>();
+                List<String> leftAssetIds = new ArrayList<>();
+                List<String> rightProdIds = new ArrayList<>();
+                List<String> rightAssetIds = new ArrayList<>();
+
+                jdbcTemplate.query("SELECT system_id, be.id AS be_id FROM da_" + userDetails.getTenant()
+                                + ".etl etl LEFT JOIN da_" + userDetails.getTenant() + ".reference r1 ON r1.source_id=etl.id AND r1.reference_type='ETL_TO_BUSINESS_ENTITY'"
+                                + " LEFT JOIN da_" + userDetails.getTenant() + ".business_entity be ON be.id=r1.target_id AND be.state='PUBLISHED' WHERE etl.id=?",
+                        new RowCallbackHandler() {
+                            @Override
+                            public void processRow(ResultSet rs) throws SQLException {
+                                String systemId = rs.getString("system_id");
+                                String beId = rs.getString("be_id");
+
+                                if (systemId != null && !nodeIds.contains(systemId)) {
+                                    nodeIds.add(systemId);
+                                    cols.get(4).add(new ArtifactModelNode(systemId, "system", "left"));
+                                }
+
+                                if (beId != null && !nodeIds.contains(beId)) {
+                                    nodeIds.add(beId);
+                                    rowsTop.get(2).add(new ArtifactModelNode(beId, "business_entity"));
+                                }
+                            }
+                        }, UUID.fromString(artifactId));
+                jdbcTemplate.query("SELECT p.id AS product_id FROM da_" + userDetails.getTenant()
+                                + ".reference r1 JOIN da_" + userDetails.getTenant()
+                                + ".product p ON r1.source_id=p.id AND p.state='PUBLISHED'"
+                                + " WHERE r1.target_id=? AND r1.reference_type='SOURCE_TO_ETL'",
+                        new RowCallbackHandler() {
+                            @Override
+                            public void processRow(ResultSet rs) throws SQLException {
+                                String productId = rs.getString("product_id");
+
+                                if (productId != null && !nodeIds.contains(productId)) {
+                                    leftProdIds.add(productId);
+                                    nodeIds.add(productId);
+                                    cols.get(4).add(new ArtifactModelNode(productId, "product", "left"));
+                                }
+                            }
+                        },
+                        UUID.fromString(artifactId));
+                jdbcTemplate.query("SELECT da.id AS asset_id FROM da_" + userDetails.getTenant()
+                                + ".reference r1 JOIN da_" + userDetails.getTenant()
+                                + ".data_asset da ON r1.source_id=da.id AND da.state='PUBLISHED'"
+                                + " WHERE r1.target_id=? AND r1.reference_type='SOURCE_TO_ETL'",
+                        new RowCallbackHandler() {
+                            @Override
+                            public void processRow(ResultSet rs) throws SQLException {
+                                String assetId = rs.getString("asset_id");
+
+                                if (assetId != null && !nodeIds.contains(assetId)) {
+                                    leftAssetIds.add(assetId);
+                                    nodeIds.add(assetId);
+                                    cols.get(4).add(new ArtifactModelNode(assetId, "data_asset", "left"));
+                                }
+                            }
+                        },
+                        UUID.fromString(artifactId));
+
+                jdbcTemplate.query("SELECT p.id AS product_id FROM da_" + userDetails.getTenant()
+                                + ".reference r1 JOIN da_" + userDetails.getTenant()
+                                + ".product p ON r1.target_id=p.id AND p.state='PUBLISHED'"
+                                + " WHERE r1.source_id=? AND r1.reference_type='ETL_TO_TARGET'",
+                        new RowCallbackHandler() {
+                            @Override
+                            public void processRow(ResultSet rs) throws SQLException {
+                                String productId = rs.getString("product_id");
+
+                                if (productId != null && !nodeIds.contains(productId)) {
+                                    rightProdIds.add(productId);
+                                    nodeIds.add(productId);
+                                    cols.get(6).add(new ArtifactModelNode(productId, "product", "right"));
+                                }
+                            }
+                        },
+                        UUID.fromString(artifactId));
+                jdbcTemplate.query("SELECT da.id AS asset_id FROM da_" + userDetails.getTenant()
+                                + ".reference r1 JOIN da_" + userDetails.getTenant()
+                                + ".data_asset da ON r1.target_id=da.id AND da.state='PUBLISHED'"
+                                + " WHERE r1.source_id=? AND r1.reference_type='ETL_TO_TARGET'",
+                        new RowCallbackHandler() {
+                            @Override
+                            public void processRow(ResultSet rs) throws SQLException {
+                                String assetId = rs.getString("asset_id");
+
+                                if (assetId != null && !nodeIds.contains(assetId)) {
+                                    rightAssetIds.add(assetId);
+                                    nodeIds.add(assetId);
+                                    cols.get(6).add(new ArtifactModelNode(assetId, "data_asset", "right"));
+                                }
+                            }
+                        },
+                        UUID.fromString(artifactId));
+
+                ////////////////////////////////////////////////////////////////////
+                if (!leftAssetIds.isEmpty()) {
+                    addAssetNodes(nodeIds, cols, rowsTop, rowsBottom, leftAssetIds, "left", userDetails);
+                }
+                if (!leftProdIds.isEmpty()) {
+                    addProductNodes(nodeIds, cols, rowsTop, rowsBottom, leftProdIds, "left", userDetails);
+                }
+                if (!rightAssetIds.isEmpty()) {
+                    addAssetNodes(nodeIds, cols, rowsTop, rowsBottom, leftAssetIds, "right", userDetails);
+                }
+                if (!rightProdIds.isEmpty()) {
+                    addProductNodes(nodeIds, cols, rowsTop, rowsBottom, rightProdIds, "right", userDetails);
+                }
+                ////////////////////////////////////////////////////////////////////
+
+                break;
         }
 
         addProductLinks(artifactId, linkedNodeIds, productIds, nodeIds, userDetails);
@@ -1484,6 +1653,7 @@ public class ArtifactRepository {
                 + " UNION SELECT id as id1, domain_id as id2 FROM da_" + userDetails.getTenant() + ".business_entity be WHERE be.state='PUBLISHED'"
                 + " UNION SELECT id as id1, domain_id as id2 FROM da_" + userDetails.getTenant() + ".product p WHERE p.state='PUBLISHED'"
                 + " UNION SELECT id as id1, entity_query_id as id2 FROM da_" + userDetails.getTenant() + ".product p WHERE p.state='PUBLISHED'"
+                + " UNION SELECT id as id1, system_id as id2 FROM da_" + userDetails.getTenant() + ".etl etl WHERE etl.state='PUBLISHED'"
                 + " UNION SELECT system_id as id1, domain_id as id2 FROM da_" + userDetails.getTenant() + ".system_to_domain s2d"
                 + " UNION SELECT source_id as id1, target_id as id2 FROM da_" + userDetails.getTenant() + ".reference r"
                 + " UNION SELECT rm_esp.entity_sample_id AS id1, rm_mc.meta_object_id AS id2 FROM da_" + userDetails.getTenant() + ".reference rm"
@@ -1606,6 +1776,379 @@ public class ArtifactRepository {
                 "DELETE FROM da_" + userDetails.getTenant() + ".model_nodes WHERE artifact_id=? AND node_id NOT IN ('"
                         + StringUtils.join(allNodeIds.toArray(), "','") + "')",
                 UUID.fromString(artifactId));
+    }
+
+    private void addProductNodes(List<String> nodeIds, List<List<ArtifactModelNode>> cols, List<List<ArtifactModelNode>> rowsTop, List<List<ArtifactModelNode>> rowsBottom, List<String> prodIds, String dir, UserDetails userDetails) {
+        jdbcTemplate.query(
+                "SELECT eq.id as entity_query_id, be.id as be_id, p.entity_query_id AS p_eq_id, s.id as system_id, "
+                        + "p2.id AS p2_id, p.id AS p_id, e.id as entity_id, d2.id as domain_id, "
+                        + "da.id as data_asset_id, es.id as da_es_id, es_eq.id as es_eq_id, mc.meta_object_id, etl_source.id AS etl_source_id, etl_target.id AS etl_target_id FROM da_" + userDetails.getTenant()
+                        + ".product p"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_query eq ON p.entity_query_id=eq.id AND eq.state='PUBLISHED'"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".system s ON eq.system_id=s.id AND s.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference rp ON rp.source_id=p.id AND rp.reference_type='PRODUCT_TO_PRODUCT'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".product p2 ON p2.id=rp.target_id AND p2.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".system_to_domain s2d ON s2d.system_id=s.id"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r6 ON r6.source_id=p.id AND r6.reference_type='PRODUCT_TO_DATA_ASSET'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".data_asset da ON da.id=r6.target_id AND da.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_sample es ON es.system_id=da.system_id AND es.entity_id=da.entity_id"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_query es_eq ON es_eq.id=es.entity_query_id AND es_eq.state='PUBLISHED'"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity e ON (eq.entity_id=e.id OR es.entity_id=e.id OR da.entity_id=e.id OR es_eq.entity_id=e.id) AND e.state='PUBLISHED'"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r5 ON r5.source_id=p.id AND r5.reference_type='PRODUCT_TO_BUSINESS_ENTITY_LINK'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r8 ON r8.source_id=e.id AND r8.reference_type='DATA_ENTITY_TO_BUSINESS_ENTITY'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".business_entity be ON (be.id=r5.target_id OR be.id=r8.target_id) AND be.state='PUBLISHED'"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".domain d2 ON (s2d.domain_id=d2.id OR be.domain_id=d2.id OR p.domain_id=d2.id) AND d2.state='PUBLISHED'"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_sample_property esp ON esp.entity_sample_id=es.id"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r ON r.source_id=esp.id AND r.reference_type='SAMPLE_PROPERTY_TO_META_COLUMN'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_column mc ON r.target_id=mc.id"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r18 ON r18.source_id=p.id AND r18.reference_type='SOURCE_TO_ETL'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".etl etl_target ON r18.target_id=etl_target.id AND etl_target.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r19 ON r19.target_id=p.id AND r19.reference_type='ETL_TO_TARGET'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".etl etl_source ON r19.source_id=etl_source.id AND etl_source.state='PUBLISHED'"
+
+                        + " WHERE p.id IN ('" + StringUtils.join(prodIds.toArray(), "','") + "')",
+                new RowCallbackHandler() {
+                    @Override
+                    public void processRow(ResultSet rs) throws SQLException {
+                        String beId = rs.getString("be_id");
+                        String prodQueryId = rs.getString("p_eq_id");
+                        String queryId = rs.getString("entity_query_id");
+                        String entityId = rs.getString("entity_id");
+                        String systemId = rs.getString("system_id");
+                        String domainId = rs.getString("domain_id");
+                        String productId = rs.getString("p_id");
+                        String product2Id = rs.getString("p2_id");
+                        String dataAssetId = rs.getString("data_asset_id");
+                        String assetSampleId = rs.getString("da_es_id");
+                        String sampleQueryId = rs.getString("es_eq_id");
+                        String metaObjectId = rs.getString("meta_object_id");
+                        String etlSourceId = rs.getString("etl_source_id");
+                        String etlTargetId = rs.getString("etl_target_id");
+
+                        /*if (prodQueryId != null) {
+                            if (!productToQueryIds.containsKey(productId))
+                                productToQueryIds.put(productId, new ArrayList<>());
+                            if (!productToQueryIds.get(productId).contains(prodQueryId))
+                                productToQueryIds.get(productId).add(prodQueryId);
+                        }*/
+                        if (domainId != null && !nodeIds.contains(domainId)) {
+                            nodeIds.add(domainId);
+                            rowsTop.get(0).add(new ArtifactModelNode(domainId, "domain"));
+                        }
+                        if (etlSourceId != null && !nodeIds.contains(etlSourceId)) {
+                            nodeIds.add(etlSourceId);
+                            if (dir.equals("left"))
+                                cols.get(3).add(new ArtifactModelNode(etlSourceId, "etl", dir));
+                            else
+                                cols.get(7).add(new ArtifactModelNode(etlSourceId, "etl", dir));
+                        }
+                        if (etlTargetId != null && !nodeIds.contains(etlTargetId)) {
+                            nodeIds.add(etlTargetId);
+                            if (dir.equals("left"))
+                                cols.get(3).add(new ArtifactModelNode(etlTargetId, "etl", dir));
+                            else
+                                cols.get(7).add(new ArtifactModelNode(etlTargetId, "etl", dir));
+                        }
+                        if (beId != null && !nodeIds.contains(beId)) {
+                            nodeIds.add(beId);
+                            rowsTop.get(1).add(new ArtifactModelNode(beId, "business_entity"));
+                        }
+                        if (queryId != null && !nodeIds.contains(queryId)) {
+                            nodeIds.add(queryId);
+                            rowsBottom.get(0).add(new ArtifactModelNode(queryId, "entity_query"));
+                        }
+                        if (sampleQueryId != null && !nodeIds.contains(sampleQueryId)) {
+                            nodeIds.add(sampleQueryId);
+                            rowsBottom.get(0).add(new ArtifactModelNode(sampleQueryId, "entity_query"));
+                        }
+                        if (entityId != null && !nodeIds.contains(entityId)) {
+                            nodeIds.add(entityId);
+                            rowsTop.get(2).add(new ArtifactModelNode(entityId, "entity"));
+                        }
+                        if (systemId != null && !nodeIds.contains(systemId)) {
+                            nodeIds.add(systemId);
+                            if (dir.equals("left"))
+                                cols.get(2).add(new ArtifactModelNode(systemId, "system", dir));
+                            else
+                                cols.get(8).add(new ArtifactModelNode(systemId, "system", dir));
+                        }
+
+                        if (dataAssetId != null && !nodeIds.contains(dataAssetId)) {
+                            nodeIds.add(dataAssetId);
+                            if (dir.equals("left"))
+                                cols.get(3).add(new ArtifactModelNode(dataAssetId, "data_asset", dir));
+                            else
+                                cols.get(7).add(new ArtifactModelNode(dataAssetId, "data_asset", dir));
+                        }
+
+                        if (assetSampleId != null && !nodeIds.contains(assetSampleId)) {
+                            nodeIds.add(assetSampleId);
+                            rowsBottom.get(1).add(new ArtifactModelNode(assetSampleId, "entity_sample"));
+                        }
+
+                        if (metaObjectId != null && !nodeIds.contains(metaObjectId)) {
+                            nodeIds.add(metaObjectId);
+                            rowsBottom.get(1).add(new ArtifactModelNode(metaObjectId, "meta_object"));
+                        }
+                    }
+                });
+
+        jdbcTemplate.query(
+                "SELECT r2.source_id as p_id, r2.target_id AS indicator_id, da.id AS asset_id, be.id as be_id, es.id AS sample_id, " +
+                        "es.entity_query_id, es.system_id, es.entity_query_id as es_query_id, be.domain_id as domain_id, " +
+                        "e.id as entity_id, i2.id as indicator2_id, mc.meta_object_id FROM da_"
+                        + userDetails.getTenant() + ".reference r2 LEFT JOIN da_" + userDetails.getTenant()
+                        + ".indicator i ON r2.reference_type='PRODUCT_TO_INDICATOR' AND r2.target_id=i.id AND i.state='PUBLISHED'"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r8 ON r8.source_id=i.id AND r8.reference_type='INDICATOR_FORMULA_TO_INDICATOR'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".indicator i2 ON i2.id=r8.target_id AND i2.state='PUBLISHED'"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r ON (r.source_id=i.id OR r.source_id=i2.id) AND r.reference_type='INDICATOR_TO_DATA_ASSET'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".data_asset da ON r.target_id=da.id AND da.state='PUBLISHED'"
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r6 ON (r6.source_id=i.id OR r6.source_id=i2.id) AND r6.reference_type='INDICATOR_TO_BUSINESS_ENTITY_LINK'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r9 ON (r9.source_id=i.id OR r9.source_id=i2.id) AND r9.reference_type='INDICATOR_FORMULA_TO_ENTITY'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity e ON (e.id=da.entity_id OR e.id=r9.target_id) AND e.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r5 ON r5.source_id=e.id AND r5.reference_type='DATA_ENTITY_TO_BUSINESS_ENTITY'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".business_entity be ON (be.id=r5.target_id OR be.id=r6.target_id) AND be.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_sample es ON da.system_id=es.system_id AND da.entity_id=es.entity_id "
+
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_sample_property esp ON esp.entity_sample_id=es.id"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r0 ON r0.source_id=esp.id AND r0.reference_type='SAMPLE_PROPERTY_TO_META_COLUMN'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_column mc ON r0.target_id=mc.id"
+
+                        + " WHERE r2.source_id IN ('" + StringUtils.join(prodIds.toArray(), "','") + "') AND r2.reference_type='PRODUCT_TO_INDICATOR'",
+                new RowCallbackHandler() {
+                    @Override
+                    public void processRow(ResultSet rs) throws SQLException {
+                        String indicatorId = rs.getString("indicator_id");
+                        String indicator2Id = rs.getString("indicator2_id");
+                        String assetId = rs.getString("asset_id");
+                        String sampleId = rs.getString("sample_id");
+                        String sampleQueryId = rs.getString("es_query_id");
+                        String beId = rs.getString("be_id");
+                        String domainId = rs.getString("domain_id");
+                        String entityId = rs.getString("entity_id");
+                        String metaObjectId = rs.getString("meta_object_id");
+
+                        if (indicatorId != null && !nodeIds.contains(indicatorId)) {
+                            nodeIds.add(indicatorId);
+                            if (dir.equals("left"))
+                                cols.get(4).add(new ArtifactModelNode(indicatorId, "indicator", dir));
+                            else
+                                cols.get(6).add(new ArtifactModelNode(indicatorId, "indicator", dir));
+                        }
+                        if (indicator2Id != null && !nodeIds.contains(indicator2Id)) {
+                            nodeIds.add(indicator2Id);
+                            if (dir.equals("left"))
+                                cols.get(4).add(new ArtifactModelNode(indicator2Id, "indicator", dir));
+                            else
+                                cols.get(6).add(new ArtifactModelNode(indicator2Id, "indicator", dir));
+                        }
+                        if (assetId != null && !nodeIds.contains(assetId)) {
+                            nodeIds.add(assetId);
+                            if (dir.equals("left"))
+                                cols.get(3).add(new ArtifactModelNode(assetId, "data_asset", dir));
+                            else
+                                cols.get(7).add(new ArtifactModelNode(assetId, "data_asset", dir));
+                        }
+                        if (sampleId != null && !nodeIds.contains(sampleId)) {
+                            nodeIds.add(sampleId);
+                            rowsBottom.get(1).add(new ArtifactModelNode(sampleId, "entity_sample"));
+                        }
+                        if (metaObjectId != null && !nodeIds.contains(metaObjectId)) {
+                            nodeIds.add(metaObjectId);
+                            rowsBottom.get(1).add(new ArtifactModelNode(metaObjectId, "meta_object"));
+                        }
+                        if (beId != null && !nodeIds.contains(beId)) {
+                            nodeIds.add(beId);
+                            rowsTop.get(1).add(new ArtifactModelNode(beId, "business_entity"));
+                        }
+                        if (domainId != null && !nodeIds.contains(domainId)) {
+                            nodeIds.add(domainId);
+                            rowsTop.get(0).add(new ArtifactModelNode(domainId, "domain"));
+                        }
+                        if (entityId != null && !nodeIds.contains(entityId)) {
+                            nodeIds.add(entityId);
+                            rowsTop.get(2).add(new ArtifactModelNode(entityId, "entity"));
+                        }
+
+                        if (sampleQueryId != null && !nodeIds.contains(sampleQueryId)) {
+                            nodeIds.add(sampleQueryId);
+                            rowsBottom.get(0).add(new ArtifactModelNode(sampleQueryId, "entity_query"));
+                        }
+                    }
+                });
+    }
+
+    private void addAssetNodes(List<String> nodeIds, List<List<ArtifactModelNode>> cols, List<List<ArtifactModelNode>> rowsTop, List<List<ArtifactModelNode>> rowsBottom, List<String> assetIds, String dir, UserDetails userDetails) {
+        jdbcTemplate.query("SELECT e.id as e_id, be.id AS be_id, be.domain_id as be_domain_id, etl_target.id AS etl_target_id, etl_source.id AS etl_source_id FROM da_" + userDetails.getTenant() + ".data_asset da "
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity e ON da.entity_id=e.id AND e.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r5 ON r5.source_id=e.id AND reference_type='DATA_ENTITY_TO_BUSINESS_ENTITY'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".business_entity be ON be.id=r5.target_id AND be.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r8 ON r8.source_id=da.id AND r8.reference_type='SOURCE_TO_ETL'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".etl etl_target ON r8.target_id=etl_target.id AND etl_target.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r9 ON r9.target_id=da.id AND r9.reference_type='ETL_TO_TARGET'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".etl etl_source ON r9.source_id=etl_source.id AND etl_source.state='PUBLISHED'"
+                        + " WHERE da.id IN ('" + StringUtils.join(assetIds.toArray(), "','") + "')"
+                , new RowCallbackHandler() {
+                    @Override
+                    public void processRow(ResultSet rs) throws SQLException {
+                        String entityId = rs.getString("e_id");
+                        String beId = rs.getString("be_id");
+                        String beDomainId = rs.getString("be_domain_id");
+                        String etlSourceId = rs.getString("etl_source_id");
+                        String etlTargetId = rs.getString("etl_target_id");
+
+                        if (entityId != null && !nodeIds.contains(entityId)) {
+                            nodeIds.add(entityId);
+                            rowsTop.get(2).add(new ArtifactModelNode(entityId, "entity"));
+                        }
+
+                        if (beId != null && !nodeIds.contains(beId)) {
+                            nodeIds.add(beId);
+                            rowsTop.get(1).add(new ArtifactModelNode(beId, "business_entity"));
+                        }
+
+                        if (beDomainId != null && !nodeIds.contains(beDomainId)) {
+                            nodeIds.add(beDomainId);
+                            rowsTop.get(0).add(new ArtifactModelNode(beDomainId, "domain"));
+                        }
+
+                        if (etlSourceId != null && !nodeIds.contains(etlSourceId)) {
+                            nodeIds.add(etlSourceId);
+                            if (dir.equals("left"))
+                                cols.get(3).add(new ArtifactModelNode(etlSourceId, "etl", dir));
+                            else
+                                cols.get(7).add(new ArtifactModelNode(etlSourceId, "etl", dir));
+                        }
+
+                        if (etlTargetId != null && !nodeIds.contains(etlTargetId)) {
+                            nodeIds.add(etlTargetId);
+                            if (dir.equals("left"))
+                                cols.get(3).add(new ArtifactModelNode(etlTargetId, "etl", dir));
+                            else
+                                cols.get(7).add(new ArtifactModelNode(etlTargetId, "etl", dir));
+                        }
+                    }
+                });
+        jdbcTemplate.query("SELECT i.id AS indicator_id, p.id AS product_id, p.domain_id, be.id AS be_id, p.entity_query_id AS p_eq_id, be2.id AS be2_id, be.domain_id as be_domain_id, be2.domain_id as be2_domain_id FROM da_"
+                        + userDetails.getTenant() + ".reference r JOIN da_" + userDetails.getTenant()
+                        + ".indicator i ON r.source_id=i.id AND i.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r2 ON r2.target_id=i.id"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".product p ON r2.source_id=p.id AND p.state='PUBLISHED' AND r2.reference_type='PRODUCT_TO_INDICATOR'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r3 ON r3.source_id=p.id AND r3.reference_type='PRODUCT_TO_BUSINESS_ENTITY_LINK'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".business_entity be ON r3.target_id=be.id AND be.state='PUBLISHED'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r5 ON r5.source_id=i.id AND r5.reference_type='INDICATOR_TO_BUSINESS_ENTITY_LINK'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".business_entity be2 ON be2.id=r5.target_id AND be2.state='PUBLISHED'"
+                        + " WHERE r.target_id IN ('" + StringUtils.join(assetIds.toArray(), "','") + "') AND r.reference_type='INDICATOR_TO_DATA_ASSET' ",
+                new RowCallbackHandler() {
+                    @Override
+                    public void processRow(ResultSet rs) throws SQLException {
+                        String indicatorId = rs.getString("indicator_id");
+                        String productId = rs.getString("product_id");
+                        String domainId = rs.getString("domain_id");
+                        String beId = rs.getString("be_id");
+                        String be2Id = rs.getString("be2_id");
+                        String prodQueryId = rs.getString("p_eq_id");
+                        String beDomainId = rs.getString("be_domain_id");
+                        String be2DomainId = rs.getString("be2_domain_id");
+
+                        /*if (productId != null && prodQueryId != null) {
+                            if (!productToQueryIds.containsKey(productId))
+                                productToQueryIds.put(productId, new ArrayList<>());
+                            if (!productToQueryIds.get(productId).contains(prodQueryId))
+                                productToQueryIds.get(productId).add(prodQueryId);
+                        }
+
+                        if (productId != null && !productIds.contains(productId))
+                            productIds.add(productId);*/
+
+                        if (indicatorId != null && !nodeIds.contains(indicatorId)) {
+                            nodeIds.add(indicatorId);
+                            if (dir == "left")
+                                cols.get(3).add(new ArtifactModelNode(indicatorId, "indicator", dir));
+                            else
+                                cols.get(7).add(new ArtifactModelNode(indicatorId, "indicator", dir));
+                        }
+
+                        if (productId != null && !nodeIds.contains(productId)) {
+                            nodeIds.add(productId);
+                            if (dir.equals("left"))
+                                cols.get(3).add(new ArtifactModelNode(productId, "product", dir));
+                            else
+                                cols.get(7).add(new ArtifactModelNode(productId, "product", dir));
+                        }
+
+                        if (domainId != null && !nodeIds.contains(domainId)) {
+                            nodeIds.add(domainId);
+                            rowsTop.get(0).add(new ArtifactModelNode(domainId, "domain"));
+                        }
+                        if (beDomainId != null && !nodeIds.contains(beDomainId)) {
+                            nodeIds.add(beDomainId);
+                            rowsTop.get(0).add(new ArtifactModelNode(beDomainId, "domain"));
+                        }
+                        if (be2DomainId != null && !nodeIds.contains(be2DomainId)) {
+                            nodeIds.add(be2DomainId);
+                            rowsTop.get(0).add(new ArtifactModelNode(be2DomainId, "domain"));
+                        }
+
+                        if (beId != null && !nodeIds.contains(beId)) {
+                            nodeIds.add(beId);
+                            rowsTop.get(1).add(new ArtifactModelNode(beId, "business_entity"));
+                        }
+                        if (be2Id != null && !nodeIds.contains(be2Id)) {
+                            nodeIds.add(be2Id);
+                            rowsTop.get(1).add(new ArtifactModelNode(be2Id, "business_entity"));
+                        }
+                    }
+                });
+
+        jdbcTemplate.query("SELECT es.id, es.system_id, es.entity_query_id, mc.meta_object_id FROM da_" + userDetails.getTenant()
+                        + ".entity_sample es"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_sample_property esp ON esp.entity_sample_id=es.id"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".reference r ON r.source_id=esp.id AND r.reference_type='SAMPLE_PROPERTY_TO_META_COLUMN'"
+                        + " LEFT JOIN da_" + userDetails.getTenant() + ".meta_column mc ON r.target_id=mc.id"
+                        + " JOIN da_" + userDetails.getTenant()
+                        + ".data_asset da ON es.entity_id = da.entity_id AND es.system_id=da.system_id WHERE da.id IN ('" + StringUtils.join(assetIds.toArray(), "','") + "')",
+                new RowCallbackHandler() {
+                    @Override
+                    public void processRow(ResultSet rs) throws SQLException {
+                        String sampleId = rs.getString("id");
+                        String systemId = rs.getString("system_id");
+                        String queryId = rs.getString("entity_query_id");
+                        String metaObjectId = rs.getString("meta_object_id");
+
+                        if (sampleId != null && !nodeIds.contains(sampleId)) {
+                            nodeIds.add(sampleId);
+                            rowsBottom.get(1).add(new ArtifactModelNode(sampleId, "entity_sample"));
+                        }
+                        if (queryId != null && !nodeIds.contains(queryId)) {
+                            nodeIds.add(queryId);
+                            rowsBottom.get(0).add(new ArtifactModelNode(queryId, "entity_query"));
+                        }
+                        if (systemId != null && !nodeIds.contains(systemId)) {
+                            nodeIds.add(systemId);
+                            if (dir.equals("left"))
+                                cols.get(2).add(new ArtifactModelNode(systemId, "system", dir));
+                            else
+                                cols.get(8).add(new ArtifactModelNode(systemId, "system", dir));
+                        }
+
+                        if (metaObjectId != null && !nodeIds.contains(metaObjectId)) {
+                            nodeIds.add(metaObjectId);
+                            rowsBottom.get(1).add(new ArtifactModelNode(metaObjectId, "meta_object"));
+                        }
+                    }
+                });
     }
 
     private List<String> getAscendantProdIdsForProduct(String productId, UserDetails userDetails) {
@@ -1997,7 +2540,7 @@ public class ArtifactRepository {
                     "(SELECT SUM(views) FROM da_" + userDetails.getTenant() + ".artifact_views WHERE artifact_id=av.artifact_id AND view_date >= ?) AS week_views, " +
                     "(SELECT SUM(views) FROM da_" + userDetails.getTenant() + ".artifact_views WHERE artifact_id=av.artifact_id AND view_date = ?) AS today_views " +
                     "FROM da_" + userDetails.getTenant()
-                    + ".artifact_views av) q ORDER BY (total_views + 10*today_views + 5*week_views) DESC LIMIT 10)" +
+                    + ".artifact_views av) q ORDER BY (total_views + 10*today_views + 5*week_views) DESC LIMIT 15)" +
                     " UNION " +
                     "(SELECT artifact_id, artifact_type, (total_views + 10*today_views + 5*week_views) as rate FROM (SELECT DISTINCT av.artifact_id, av.artifact_type, " +
                     "(SELECT SUM(views) FROM da_" + userDetails.getTenant() + ".artifact_views WHERE artifact_id=av.artifact_id) AS total_views, " +
@@ -2005,7 +2548,13 @@ public class ArtifactRepository {
                     "(SELECT SUM(views) FROM da_" + userDetails.getTenant() + ".artifact_views WHERE artifact_id=av.artifact_id AND view_date = ?) AS today_views " +
                     "FROM da_" + userDetails.getTenant()
                     + ".artifact_views av JOIN da_" + userDetails.getTenant() + ".artifacts a ON av.artifact_id=a.id AND (" + StringUtils.join(parts.toArray(), " OR ")
-                    + ")) q ORDER BY (total_views + 10*today_views + 5*week_views) DESC LIMIT 10) ORDER BY rate DESC) q2", new RowCallbackHandler() {
+                    + ")) q ORDER BY (total_views + 10*today_views + 5*week_views) DESC LIMIT 15) " +
+
+                    "UNION (SELECT target_id AS artifact_id, target_artifact_type AS artifact_type, 1 as rate FROM da_" + userDetails.getTenant() +
+                    ".reference r WHERE r.reference_type='DOMAIN_TO_RECOMMENDED_ARTIFACT' AND r.source_id IN ('" + StringUtils.join(userDetails.getUserDomains().toArray(), "','") +
+                    "'))"
+
+                    + " ORDER BY rate DESC) q2", new RowCallbackHandler() {
                 @Override
                 public void processRow(ResultSet rs) throws SQLException {
                     DashboardEntity de = new DashboardEntity();
@@ -2021,7 +2570,7 @@ public class ArtifactRepository {
                     "(SELECT SUM(views) FROM da_" + userDetails.getTenant() + ".artifact_views WHERE artifact_id=av.artifact_id AND view_date >= ?) AS week_views, " +
                     "(SELECT SUM(views) FROM da_" + userDetails.getTenant() + ".artifact_views WHERE artifact_id=av.artifact_id AND view_date = ?) AS today_views " +
                     "FROM da_" + userDetails.getTenant()
-                    + ".artifact_views av) q ORDER BY (total_views + 10*today_views + 5*week_views) DESC LIMIT 10)", new RowCallbackHandler() {
+                    + ".artifact_views av) q ORDER BY (total_views + 10*today_views + 5*week_views) DESC LIMIT 15)", new RowCallbackHandler() {
                 @Override
                 public void processRow(ResultSet rs) throws SQLException {
                     DashboardEntity de = new DashboardEntity();
@@ -2059,6 +2608,7 @@ public class ArtifactRepository {
                     }
                 });*/
 
+        Collections.shuffle(res);
         return res;
     }
 
@@ -2218,7 +2768,7 @@ public class ArtifactRepository {
             obj.setName(rs.getString("name"));
             obj.setDescription(rs.getString("description"));
             obj.setId(rs.getString("id"));
-            obj.setArtifactType(rs.getString("artifact_type"));
+            obj.setArtifactType(ArtifactType.valueOf(rs.getString("artifact_type")));
             obj.setArtifactTypeName(rs.getString("artifact_type_name"));
             obj.setWorkflowState(rs.getString("state"));
             if (rs.getString("state_name") == null)
@@ -2295,6 +2845,11 @@ public class ArtifactRepository {
                     sb.append(" AND domain_id IN ('"
                             + org.apache.commons.lang3.StringUtils.join(userDetails.getUserDomains(), "','") + "') ");
                 }
+                break;
+            case etl:
+                sb.append(
+                        "SELECT id, name, short_description, description, workflow_task_id, created, 'etl' as artifact_type, modified FROM da_"
+                                + userDetails.getTenant() + ".etl WHERE state='DRAFT'");
                 break;
             case business_entity:
                 sb.append(
@@ -2437,8 +2992,8 @@ public class ArtifactRepository {
                 case ForeignKey:
                     if (ar.getArtifact2Type().toString().equals(tgtArtifactType) && ar.getArtifact2Column() != null)
                         w = "tbl1." + ar.getArtifact2Column() + "='" + srcArtifactId + "'";
-                    else if (ar.getArtifact1Type().toString().equals(tgtArtifactType) && ar.getArtifact1Column() != null)
-                        w = "tbl1." + ar.getArtifact1Column() + "='" + srcArtifactId + "'";
+                    else if (ar.getArtifact1Type().toString().equals(tgtArtifactType) && ar.getArtifact1Column() != null && ar.getArtifact2Column() != null)
+                        w = "tbl1." + ar.getArtifact1Column() + "=(SELECT " + ar.getArtifact2Column() + " FROM da_" + userDetails.getTenant() + "." + ar.getArtifact2Type() + " WHERE id = '" + srcArtifactId + "')";
                     break;
                 case CrossTable:
                     if (ar.getArtifact2Type().toString().equals(tgtArtifactType)) {
@@ -2671,5 +3226,44 @@ public class ArtifactRepository {
         }
 
         return null;
+    }
+
+    public SearchResponse<FlatArtifact> searchArtifacts(SearchRequestWithJoin searchRequest, SearchColumn[] searchableColumns, UserDetails userDetails) {
+
+        SearchSQLParts searchSQLParts = getSearchSQLParts(searchRequest, searchableColumns, null, false, userDetails);
+
+        String orderby = searchSQLParts.getOrderBy();
+        String where = searchSQLParts.getWhere();
+        List<Object> whereValues = searchSQLParts.getWhereValues();
+
+        String subQuery = "SELECT a.*, true as has_access FROM da_" + userDetails.getTenant() + ".artifacts a ";
+
+        subQuery = "SELECT sq.* FROM (" + subQuery + ") as sq ";
+        subQuery = "SELECT distinct sq.*, t.tags FROM (" + subQuery + ") as sq "
+            + "left join (select e2t.artifact_id, string_agg(t.name, ',') as tags from da_" + userDetails.getTenant() + ".tag t join da_" + userDetails.getTenant() + ".tag_to_artifact e2t on e2t.tag_id=t.id group by e2t.artifact_id) t on t.artifact_id=sq.id ";
+
+        log.info("QAQ " + "SELECT * FROM (" + subQuery + ") as tbl1 " + where
+                + " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
+                + searchRequest.getLimit());
+
+        List<FlatArtifact> flatItems =
+                jdbcTemplate.query("SELECT * FROM (" + subQuery + ") as tbl1 " + where
+                        + " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
+                        + searchRequest.getLimit(), new FlatArtifactRowMapper(), whereValues.toArray());
+
+        Integer total = jdbcTemplate.queryForObject("SELECT COUNT(distinct id) FROM (" + subQuery + ") as tbl1 " + where, Integer.class, whereValues.toArray());
+
+        SearchResponse<FlatArtifact> res = new SearchResponse<>(total, searchRequest.getLimit(), searchRequest.getOffset(), flatItems);
+
+        return res;
+    }
+
+    public FlatModeledObject getArtifact(String id, UserDetails userDetails) {
+        try {
+            return jdbcTemplate.queryForObject("SELECT * FROM da_" + userDetails.getTenant() + ".artifacts WHERE id=?",
+                    new FlatModeledObjectRowMapper(), UUID.fromString(id));
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
 }

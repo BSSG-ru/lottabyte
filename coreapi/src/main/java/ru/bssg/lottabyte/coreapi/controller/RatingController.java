@@ -20,8 +20,10 @@ import ru.bssg.lottabyte.core.model.rating.Rating;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.RatingService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Objects;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES_STRICT;
@@ -41,6 +43,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class RatingController {
     private final RatingService ratingService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -62,7 +65,9 @@ public class RatingController {
             @Parameter(description = "Artifact ID of the artifact",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("artifact_id") String artifactId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(ratingService.getArtifactRatingById(artifactId, userDetails), HttpStatus.OK);
@@ -93,7 +98,9 @@ public class RatingController {
             @Parameter(description = "Rating. Can be from 1 to 5",
                     example = "4")
             @PathVariable("rating") Integer rating,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactType, artifactId, rating);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(ratingService.rateArtifact(artifactType, artifactId, rating, userDetails), HttpStatus.OK);
@@ -118,7 +125,9 @@ public class RatingController {
             @Parameter(description = "Artifact ID of the Artifact",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("artifact_id") String artifactId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(ratingService.removeArtifactRate(artifactId, userDetails), HttpStatus.OK);
@@ -143,7 +152,9 @@ public class RatingController {
             @Parameter(description = "Artifact ID of the Artifact",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("artifact_id") String artifactId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(ratingService.getOwnArtifactRate(artifactId, userDetails), HttpStatus.OK);

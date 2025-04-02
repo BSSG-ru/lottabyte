@@ -16,7 +16,6 @@ import java.util.UUID;
 @ToString(callSuper=true)
 @EqualsAndHashCode(callSuper = true)
 public class FlatMetaObject extends FlatModeledObject {
-    private List<Tag> tags;
     private UUID parentId;
     private String parentName;
     private UUID metaDatabaseId;

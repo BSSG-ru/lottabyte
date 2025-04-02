@@ -12,7 +12,6 @@ import java.time.LocalDateTime;
 @ToString(callSuper=true)
 @EqualsAndHashCode(callSuper=false)
 public class FlatWFItemObject extends FlatModeledObject {
-    protected String artifactType;
     protected String artifactTypeName;
     protected String workflowState;
     protected String workflowStateName;
@@ -21,7 +20,6 @@ public class FlatWFItemObject extends FlatModeledObject {
 
     public FlatWFItemObject(FlatWFItemObject f) {
         super(f);
-        this.artifactType = f.getArtifactType();
         this.artifactTypeName = f.getArtifactTypeName();
         this.workflowState = f.getWorkflowState();
         this.workflowStateName = f.getWorkflowStateName();

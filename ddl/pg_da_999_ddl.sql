@@ -2076,7 +2076,7 @@ begin
         (id, name, rule_ref,  description, 
         state, workflow_task_id,  published_id, version_id, history_start, history_end, history_id, 
 		created, creator, modified, modifier, ancestor_draft_id, published_version_id)
-        values(old.id, old.name, old.rule_ref, old.description, 
+        values(old.id, old.name, old.rule_ref, old.description,
         old.state, old.workflow_task_id, old.published_id, old.version_id, old.history_start, CURRENT_TIMESTAMP, old.history_id, 
 		old.created, old.creator, old.modified, old.modifier, old.ancestor_draft_id, old.published_version_id);
         return old;

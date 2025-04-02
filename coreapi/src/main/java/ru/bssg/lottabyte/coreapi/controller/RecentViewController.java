@@ -21,8 +21,10 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.RecentViewService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Objects;
 
@@ -42,6 +44,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class RecentViewController {
     private final RecentViewService recentViewService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -66,7 +69,9 @@ public class RecentViewController {
             @Parameter(description = "Artifact type",
                     example = "entity")
             @PathVariable("artifact_type") String artifactType,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId, artifactType);
         return new ResponseEntity<>(recentViewService.changeRecentView(artifactId, artifactType,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -87,7 +92,9 @@ public class RecentViewController {
     @RequestMapping(value = "", method = RequestMethod.GET, produces = { "application/json"})
     @Secured(roles = {"recent_views_r"}, level = ANY_ROLE)
     public ResponseEntity<List<RecentView>> getRecentViews(
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request);
         return new ResponseEntity<>(recentViewService.getRecentViews(null,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -111,7 +118,9 @@ public class RecentViewController {
             @Parameter(description = "Artifact type",
                     example = "entity")
             @PathVariable("artifact_type") String artifactType,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactType);
         return new ResponseEntity<>(recentViewService.getRecentViews(artifactType,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }

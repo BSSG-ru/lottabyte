@@ -18,8 +18,10 @@ import ru.bssg.lottabyte.core.model.userfav.UserFav;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.UserFavService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Objects;
 
@@ -40,6 +42,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 public class UserFavController {
     private final JwtHelper jwtHelper;
     private final UserFavService userFavService;
+    private final APILogService apiLogService;
 
     @Operation(
             security = @SecurityRequirement(name = "bearerAuth"),
@@ -58,7 +61,9 @@ public class UserFavController {
     @RequestMapping(value = "/get_favs", method = RequestMethod.GET, produces = { "application/json"})
     //@Secured(roles = {"active_r"}, level = ANY_ROLE)
     public ResponseEntity<List<UserFav>> getUserFavs(
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -69,7 +74,9 @@ public class UserFavController {
     //@Secured(roles = {"active_r"}, level = ANY_ROLE)
     public ResponseEntity<List<UserFav>> getUserFavs(
             @PathVariable("artifact_type") String artifactType,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactType);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -79,7 +86,9 @@ public class UserFavController {
     @RequestMapping(value = "/is_in_fav/{artifact_id}", method = RequestMethod.GET, produces = { "application/json"})
     public ResponseEntity<Boolean> getIsInFav(
             @PathVariable("artifact_id") String artifactId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -90,7 +99,9 @@ public class UserFavController {
     public ResponseEntity<Boolean> addToFav(
             @PathVariable("artifact_type") String artifactType,
             @PathVariable("artifact_id") String artifactId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactType, artifactId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -102,7 +113,9 @@ public class UserFavController {
     @RequestMapping(value = "/del_from_fav/{artifact_id}", method = RequestMethod.GET, produces = { "application/json"})
     public ResponseEntity<Boolean> delFromFav(
             @PathVariable("artifact_id") String artifactId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 

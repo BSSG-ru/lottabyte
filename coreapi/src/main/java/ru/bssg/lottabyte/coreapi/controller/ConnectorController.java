@@ -22,8 +22,10 @@ import ru.bssg.lottabyte.core.model.connector.ConnectorParam;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.ConnectorService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Objects;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
@@ -42,6 +44,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class ConnectorController {
     private final ConnectorService connectorService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -64,7 +67,9 @@ public class ConnectorController {
             @Parameter(description = "ID of the Connector",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("connector_id") String connectorId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, connectorId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -92,8 +97,8 @@ public class ConnectorController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset);
         return new ResponseEntity<>(connectorService.getConnectorsPaginated(offset, limit), HttpStatus.OK);
 }
 
@@ -117,8 +122,8 @@ public class ConnectorController {
             @Parameter(description = "ID of the Connector Param",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("param_id") String paramId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, paramId);
         return new ResponseEntity<>(connectorService.getConnectorParamById(paramId), HttpStatus.OK);
     }
 
@@ -146,7 +151,9 @@ public class ConnectorController {
             @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, connectorId, limit, offset);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 

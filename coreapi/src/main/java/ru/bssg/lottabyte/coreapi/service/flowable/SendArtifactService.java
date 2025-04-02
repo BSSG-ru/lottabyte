@@ -13,6 +13,7 @@ import ru.bssg.lottabyte.core.model.dataentity.DataEntity;
 import ru.bssg.lottabyte.core.model.domain.Domain;
 import ru.bssg.lottabyte.core.model.dqRule.DQRule;
 import ru.bssg.lottabyte.core.model.entityQuery.EntityQuery;
+import ru.bssg.lottabyte.core.model.etl.ETL;
 import ru.bssg.lottabyte.core.model.indicator.Indicator;
 import ru.bssg.lottabyte.core.model.product.Product;
 import ru.bssg.lottabyte.core.model.system.System;
@@ -43,6 +44,8 @@ public class SendArtifactService implements JavaDelegate {
     private EntityQueryService entityQueryService;
     @Autowired
     private DQRuleService dqRuleService;
+    @Autowired
+    private ETLService etlService;
 
     public void execute(DelegateExecution execution) {
         log.info("SendArtifactService called");
@@ -51,7 +54,7 @@ public class SendArtifactService implements JavaDelegate {
         ArtifactType artifactType = ArtifactType.fromString((String) execution.getVariable("artifact_type"));
         ArtifactType[] entities = { ArtifactType.domain, ArtifactType.entity, ArtifactType.business_entity,
                 ArtifactType.product, ArtifactType.indicator, ArtifactType.data_asset, ArtifactType.system,
-                ArtifactType.entity_query, ArtifactType.dq_rule};
+                ArtifactType.entity_query, ArtifactType.dq_rule, ArtifactType.etl};
         if (Arrays.asList(entities).contains(artifactType)) {
             UserDetails ud = new UserDetails();
             ud.setUid((String) execution.getVariable("ud_uid"));
@@ -95,6 +98,10 @@ public class SendArtifactService implements JavaDelegate {
                     case dq_rule:
                         DQRule dqr = dqRuleService.wfSend(artifactId, ud);
                         execution.setVariable("result_artifact_id", dqr.getMetadata().getId());
+                        break;
+                    case etl:
+                        ETL etl = etlService.wfSend(artifactId, ud);
+                        execution.setVariable("result_artifact_id", etl.getMetadata().getId());
                         break;
                 }
 

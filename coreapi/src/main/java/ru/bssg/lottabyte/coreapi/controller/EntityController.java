@@ -38,9 +38,11 @@ import ru.bssg.lottabyte.core.usermanagement.model.Language;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.EntityService;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.*;
@@ -62,6 +64,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class EntityController {
     private final EntityService entityService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -84,8 +87,9 @@ public class EntityController {
             @Parameter(description = "Artifact ID of the Entity",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_id") String entityId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId);
         return new ResponseEntity<>(entityService.getDataEntityById(entityId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -112,8 +116,9 @@ public class EntityController {
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @Parameter(description = "Artifact state.")
             @RequestParam(value="state", defaultValue = "PUBLISHED") String artifactState,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset, artifactState);
         return new ResponseEntity<>(entityService.getAllEntitiesPaginated(offset, limit, artifactState, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -138,8 +143,9 @@ public class EntityController {
             @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId, limit, offset);
         PaginatedArtifactList<DataEntity> list = entityService.getEntityVersions(
                 entityId, offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
@@ -166,7 +172,9 @@ public class EntityController {
             @PathVariable("entity_id") String entityId,
             @Parameter(description = "Version ID of the Domain", example = "1")
             @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId, versionId);
         return ResponseEntity.ok(entityService.getEntityVersionById(entityId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
@@ -185,7 +193,9 @@ public class EntityController {
     public ResponseEntity<DataEntity> restoreEntityVersionById(
             @Parameter(description = "ID of the Entity", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("entity_id") String entityId,
             @Parameter(description = "Version ID of the Entity", example = "1") @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId, versionId);
         return ResponseEntity.ok(entityService.restoreEntityVersionById(entityId, versionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
@@ -206,7 +216,9 @@ public class EntityController {
     @RequestMapping(value = "", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"lo_r", "lo_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<DataEntity> createEntity(@RequestBody UpdatableDataEntityEntity newDataEntityEntity,
-                                                   @RequestHeader HttpHeaders headers) throws LottabyteException {
+                                                   @RequestHeader HttpHeaders headers,
+                                                   HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newDataEntityEntity);
         return new ResponseEntity<>(entityService.createDataEntity(newDataEntityEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -230,7 +242,9 @@ public class EntityController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_id") String entityId,
             @RequestBody UpdatableDataEntityEntity dataEntityEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId, dataEntityEntity);
         return new ResponseEntity<>(entityService.updateDataEntity(entityId, dataEntityEntity, false, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -254,8 +268,10 @@ public class EntityController {
             @Parameter(description = "Artifact ID of the Entity",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_id") String entityId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId);
         DataEntity result = entityService.deleteDataEntityById(entityId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -288,7 +304,9 @@ public class EntityController {
             @Parameter(description = "Artifact ID of the Entity Attribute",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_attribute_id") String entityAttributeId,
-            @RequestHeader HttpHeaders headers) throws Exception {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws Exception {
+        apiLogService.logApiCall(request, entityAttributeId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -319,8 +337,10 @@ public class EntityController {
             @RequestParam(value="limit", defaultValue = "99999") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws Exception {
+        apiLogService.logApiCall(request, entityId, limit, offset);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -347,7 +367,9 @@ public class EntityController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_id") String entityId,
             @RequestBody UpdatableDataEntityAttributeEntity newDataEntityAttributeEntity,
-            @RequestHeader HttpHeaders headers) throws Exception {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws Exception {
+        apiLogService.logApiCall(request, entityId, newDataEntityAttributeEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -375,7 +397,9 @@ public class EntityController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_attribute_id") String entityAttributeId,
             @RequestBody UpdatableDataEntityAttributeEntity dataEntityAttributeEntity,
-            @RequestHeader HttpHeaders headers) throws Exception {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws Exception {
+        apiLogService.logApiCall(request, entityAttributeId, dataEntityAttributeEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -405,7 +429,9 @@ public class EntityController {
             @Parameter(description = "Filter for cascade removal",
                     example = "true")
             @PathVariable("force") Boolean force,
-            @RequestHeader HttpHeaders headers) throws Exception {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws Exception {
+        apiLogService.logApiCall(request, entityAttributeId, force);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -435,8 +461,8 @@ public class EntityController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("folder_id") String folderId,
             @RequestParam(value="include_children", defaultValue = "true") Boolean includeChildren,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, folderId, includeChildren);
         return new ResponseEntity<>(entityService.getDataEntityFolderById(folderId, includeChildren, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -458,8 +484,8 @@ public class EntityController {
     @Secured(roles = {"lo_r"}, level = ANY_ROLE)
     public ResponseEntity<List<DataEntityFolder>> getRootFolders(
             @RequestParam(value="include_children", defaultValue = "true") Boolean includeChildren,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, includeChildren);
         return new ResponseEntity<>(entityService.getRootFolders(includeChildren, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -480,8 +506,8 @@ public class EntityController {
     @Secured(roles = {"lo_r", "lo_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<DataEntityFolder> createFolder(
             @RequestBody UpdatableDataEntityFolderEntity newDataEntityFolderEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newDataEntityFolderEntity);
         return new ResponseEntity<>(entityService.createFolder(newDataEntityFolderEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -506,8 +532,9 @@ public class EntityController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("folder_id") String folderId,
             @RequestBody UpdatableDataEntityFolderEntity dataEntityFolderEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, folderId, dataEntityFolderEntity);
         return new ResponseEntity<>(entityService.patchFolder(folderId, dataEntityFolderEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -531,8 +558,9 @@ public class EntityController {
             @Parameter(description = "Artifact ID of the Entity Folder",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("folder_id") String folderId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, folderId);
         return new ResponseEntity<>(entityService.deleteFolder(folderId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -540,12 +568,14 @@ public class EntityController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"lo_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDataEntity>> searchDataEntities(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatDataEntity> res = entityService.searchDataEntities(request, userDetails);
+        SearchResponse<FlatDataEntity> res = entityService.searchDataEntities(sr, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -554,13 +584,15 @@ public class EntityController {
     @RequestMapping(value = "/search_by_domain/{domain_id}", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"lo_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDataEntity>> searchDataEntityByDomain(
-            @RequestBody SearchRequestWithJoin request,
+            @RequestBody SearchRequestWithJoin sr,
             @PathVariable("domain_id") String domainId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr ,domainId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatDataEntity> res = entityService.searchDataEntityByDomain(request, domainId, userDetails);
+        SearchResponse<FlatDataEntity> res = entityService.searchDataEntityByDomain(sr, domainId, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -569,13 +601,15 @@ public class EntityController {
     @RequestMapping(value = "/search_by_indicator/{indicator_id}", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"lo_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDataEntity>> searchDataEntityByIndicator(
-            @RequestBody SearchRequestWithJoin request,
+            @RequestBody SearchRequestWithJoin sr,
             @PathVariable("indicator_id") String indicatorId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr, indicatorId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatDataEntity> res = entityService.searchDataEntityByIndicator(request, indicatorId, userDetails);
+        SearchResponse<FlatDataEntity> res = entityService.searchDataEntityByIndicator(sr, indicatorId, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -584,13 +618,15 @@ public class EntityController {
     @RequestMapping(value = "/search_by_be/{be_id}", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"lo_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDataEntity>> searchDataEntityByBE(
-            @RequestBody SearchRequestWithJoin request,
+            @RequestBody SearchRequestWithJoin sr,
             @PathVariable("be_id") String beId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr, beId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatDataEntity> res = entityService.searchDataEntityByBE(request, beId, userDetails);
+        SearchResponse<FlatDataEntity> res = entityService.searchDataEntityByBE(sr, beId, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -599,13 +635,32 @@ public class EntityController {
     @RequestMapping(value = "/search_attributes_by_entity_id/{entity_id}", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"lo_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDataEntityAttribute>> searchAttributesByEntityId(
-            @RequestBody SearchRequestWithJoin request,
+            @RequestBody SearchRequestWithJoin sr,
             @PathVariable("entity_id") String entityId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr, entityId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatDataEntityAttribute> res = entityService.searchAttributesByEntityId(request, entityId, userDetails);
+        SearchResponse<FlatDataEntityAttribute> res = entityService.searchAttributesByEntityId(sr, entityId, userDetails);
+
+        return new ResponseEntity<>(res, HttpStatus.OK);
+    }
+
+    @Hidden
+    @RequestMapping(value = "/search_attributes_for_product/{product_id}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"lo_r"}, level = ANY_ROLE)
+    public ResponseEntity<SearchResponse<FlatDataEntityAttribute>> searchAttributesForProduct(
+            @RequestBody SearchRequestWithJoin sr,
+            @PathVariable("product_id") String productId,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr, productId);
+        String token = HttpUtils.getToken(headers);
+        UserDetails userDetails = jwtHelper.getUserDetail(token);
+
+        SearchResponse<FlatDataEntityAttribute> res = entityService.searchAttributesForProduct(sr, productId, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -613,12 +668,14 @@ public class EntityController {
     @Hidden
     @RequestMapping(value = "/search_attributes", method = RequestMethod.POST, produces = { "application/json"})
     public ResponseEntity<SearchResponse<FlatDataEntityAttribute>> searchAttributes(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatDataEntityAttribute> res = entityService.searchAttributes(request, userDetails);
+        SearchResponse<FlatDataEntityAttribute> res = entityService.searchAttributes(sr, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -626,7 +683,9 @@ public class EntityController {
     @Hidden
     @RequestMapping(value = "/attributes/types", method = RequestMethod.GET, produces = { "application/json" })
     @Secured(roles = {"lo_r"}, level = ANY_ROLE)
-    public ResponseEntity<List<EntityAttributeType>> getEntityAttributeTypes(@RequestHeader HttpHeaders headers) throws LottabyteException {
+    public ResponseEntity<List<EntityAttributeType>> getEntityAttributeTypes(@RequestHeader HttpHeaders headers,
+                                                                             HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -638,7 +697,9 @@ public class EntityController {
     @Hidden
     @RequestMapping(value = "/model", method = RequestMethod.GET, produces = { "application/json" })
     @Secured(roles = {"lo_mdl_r"}, level = ANY_ROLE)
-    public ResponseEntity<GojsModelData> getModel(@RequestHeader HttpHeaders headers) throws LottabyteException {
+    public ResponseEntity<GojsModelData> getModel(@RequestHeader HttpHeaders headers,
+                                                  HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -651,7 +712,10 @@ public class EntityController {
     @RequestMapping(value = "/model", method = RequestMethod.PATCH, produces = { "application/json" })
     @Secured(roles = {"lo_mdl_u"}, level = ANY_ROLE)
     @CrossOrigin
-    public ResponseEntity<List<GojsModelNodeData>> updateModel(@RequestBody UpdatableGojsModelData updatableGojsModelData, @RequestHeader HttpHeaders headers) throws LottabyteException {
+    public ResponseEntity<List<GojsModelNodeData>> updateModel(@RequestBody UpdatableGojsModelData updatableGojsModelData,
+                                                               @RequestHeader HttpHeaders headers,
+                                                               HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, updatableGojsModelData);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -679,8 +743,9 @@ public class EntityController {
             @Parameter(description = "ID of the Entity",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_id") String entityId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId);
         DataEntity result = entityService.archiveDataEntityById(entityId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -710,8 +775,9 @@ public class EntityController {
             @Parameter(description = "ID of the Entity",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("entity_id") String entityId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId);
         DataEntity result = entityService.restoreDataEntityById(entityId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(result, HttpStatus.OK);
     }

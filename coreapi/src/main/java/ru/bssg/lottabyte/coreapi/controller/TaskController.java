@@ -29,10 +29,12 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.EntitySampleService;
 import ru.bssg.lottabyte.coreapi.service.TaskRunService;
 import ru.bssg.lottabyte.coreapi.service.TaskService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Objects;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES_STRICT;
@@ -53,6 +55,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 public class TaskController {
     private final TaskService taskService;
     private final EntitySampleService entitySampleService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
     private final TaskRunService taskRunService;
 
@@ -74,7 +77,9 @@ public class TaskController {
     @Secured(roles = {"task_r"}, level = ANY_ROLE)
     public ResponseEntity<Task> getTaskById(
             @PathVariable("task_id") String taskId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, taskId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -100,7 +105,9 @@ public class TaskController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -128,8 +135,9 @@ public class TaskController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId, limit, offset);
         UserDetails userDetails = jwtHelper.getUserDetail(HttpUtils.getToken(headers));
         return new ResponseEntity<>(taskService.getTasksByQueryId(queryId, limit, offset, userDetails), HttpStatus.OK);
     }
@@ -151,8 +159,10 @@ public class TaskController {
     @Secured(roles = {"task_r", "task_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<Task> createTask(
             @RequestBody UpdatableTaskEntity newTaskEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, newTaskEntity);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -180,8 +190,10 @@ public class TaskController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("task_id") String taskId,
             @RequestBody UpdatableTaskEntity taskEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, taskId, taskEntity);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -208,7 +220,9 @@ public class TaskController {
             @Parameter(description = "Artifact ID of the Task",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("task_id") String taskId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, taskId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -234,8 +248,10 @@ public class TaskController {
             @PathVariable("task_id") String taskId,
             @Parameter(description = "The number of lines to be output. The default value is 50.")
             @RequestParam(value="rows_number", defaultValue = "50") Integer rowsNumber,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, taskId, rowsNumber);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -259,8 +275,10 @@ public class TaskController {
     @Secured(roles = {"task_r", "task_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<TaskRun> getSamplesProperties(
             @PathVariable("task_schedule_id") String taskScheduleId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, taskScheduleId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -288,8 +306,10 @@ public class TaskController {
     @Secured(roles = {"task_r"}, level = ANY_ROLE)
     public ResponseEntity<TaskRun> getTaskRunById(
             @PathVariable("task_run_id") String taskRunId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, taskRunId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -300,12 +320,14 @@ public class TaskController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"task_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatTask>> searchTaskRuns(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatTask> res = taskService.searchTaskRuns(request, userDetails);
+        SearchResponse<FlatTask> res = taskService.searchTaskRuns(sr, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }

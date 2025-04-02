@@ -19,7 +19,6 @@ public class FlatMetaDatabase extends FlatModeledObject {
     private String driverClassName;
     private String jdbcUrl;
     private UUID systemId;
-    private List<Tag> tags;
     private String state;
     private List<Relation> tasks;
 }

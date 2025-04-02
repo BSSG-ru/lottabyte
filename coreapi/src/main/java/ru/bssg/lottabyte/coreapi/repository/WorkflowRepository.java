@@ -203,11 +203,11 @@ public class WorkflowRepository extends GenericArtifactRepository<Workflow> {
 
         if (pd.getArtifactType() != null) {
             sets.add("artifact_type=?");
-            args.add(pd.getArtifactType());
+            args.add(pd.getArtifactType().getText());
         }
         if (pd.getArtifactAction() != null) {
             sets.add("artifact_action=?");
-            args.add(pd.getArtifactAction());
+            args.add(pd.getArtifactAction().name());
         }
         if (pd.getProcessDefinitionKey() != null) {
             sets.add("process_definition_key=?");

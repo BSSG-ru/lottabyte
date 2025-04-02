@@ -22,7 +22,6 @@ public class FlatEntityQuery extends FlatModeledObject implements IFlatModeledOb
     private ArtifactState state;
     private String workflowState;
     private String workflowTaskId;
-    private List<String> tags;
 
     public FlatEntityQuery(EntityQuery d) {
         super(d.getFlatModeledObject());

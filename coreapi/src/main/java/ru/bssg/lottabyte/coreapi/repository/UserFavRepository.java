@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import ru.bssg.lottabyte.core.model.ArtifactType;
 import ru.bssg.lottabyte.core.model.userfav.UserFav;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 
@@ -30,7 +31,7 @@ public class UserFavRepository {
             uf.setId(rs.getString("id"));
             uf.setUserId(rs.getInt("user_id"));
             uf.setArtifactId(rs.getString("artifact_id"));
-            uf.setArtifactType(rs.getString("artifact_type"));
+            uf.setArtifactType(ArtifactType.valueOf(rs.getString("artifact_type")));
 
             return uf;
         }

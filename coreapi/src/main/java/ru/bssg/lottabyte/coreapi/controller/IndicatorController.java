@@ -34,9 +34,11 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.EntitySampleService;
 import ru.bssg.lottabyte.coreapi.service.IndicatorService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +57,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 public class IndicatorController {
 
         private final IndicatorService indicatorService;
-        private final EntitySampleService sampleService;
+        private final APILogService apiLogService;
         private final JwtHelper jwtHelper;
 
         @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Gets Indicator by given guid.", description = "This method can be used to get Indicator by given guid.", operationId = "getIndicatorById")
@@ -70,9 +72,10 @@ public class IndicatorController {
         @RequestMapping(value = "/{indicator_id}", method = RequestMethod.GET, produces = { "application/json" })
         @Secured(roles = { "indicator_r" }, level = ANY_ROLE)
         public ResponseEntity<Indicator> getIndicatorById(
-                        @Parameter(description = "Artifact ID of the Indicator", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                @Parameter(description = "Artifact ID of the Indicator", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId);
                 return new ResponseEntity<>(indicatorService.getIndicatorById(indicatorId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -91,8 +94,9 @@ public class IndicatorController {
         @Secured(roles = { "indicator_r" }, level = ANY_ROLE)
         public ResponseEntity<Map<String, List<DataEntityAttributeEntity>>> getEntityAttributesByIndicatorId(
                         @Parameter(description = "Artifact ID of the Indicator", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId);
                 return new ResponseEntity<>(indicatorService.getEntityAttributesByIndicatorId(indicatorId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -112,8 +116,9 @@ public class IndicatorController {
                         @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
                         @Parameter(description = "Artifact state.")
                         @RequestParam(value="state", defaultValue = "PUBLISHED") String artifactState,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, limit, offset, artifactState);
                 return new ResponseEntity<>(indicatorService.getIndicatorsPaginated(offset, limit, artifactState,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -130,8 +135,9 @@ public class IndicatorController {
         @Secured(roles = { "indicator_r", "indicator_u" }, level = ALL_ROLES_STRICT)
         public ResponseEntity<Indicator> createIndicator(
                         @RequestBody UpdatableIndicatorEntity newIndicatorEntity,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, newIndicatorEntity);
                 return new ResponseEntity<>(indicatorService.createIndicator(newIndicatorEntity,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -150,8 +156,9 @@ public class IndicatorController {
         public ResponseEntity<Indicator> patchIndicator(
                         @Parameter(description = "Artifact ID of the Indicator to be patched", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
                         @RequestBody UpdatableIndicatorEntity indicatorEntity,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId, indicatorEntity);
                 return new ResponseEntity<>(indicatorService.patchIndicator(indicatorId, indicatorEntity, false,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -169,7 +176,9 @@ public class IndicatorController {
         @Secured(roles = { "indicator_r", "indicator_u" }, level = ALL_ROLES_STRICT)
         public ResponseEntity<?> deleteIndicator(
                         @Parameter(description = "Artifact ID of the Indicator to be deleted", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId);
                 Indicator result = indicatorService.deleteIndicator(indicatorId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 if (result == null) {
@@ -184,10 +193,11 @@ public class IndicatorController {
         @Hidden
         @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json" })
         public ResponseEntity<SearchResponse<FlatIndicator>> searchIndicators(
-                        @RequestBody SearchRequestWithJoin request,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-                return new ResponseEntity<>(indicatorService.searchIndicators(request,
+                        @RequestBody SearchRequestWithJoin sr,
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, sr);
+                return new ResponseEntity<>(indicatorService.searchIndicators(sr,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
 
@@ -206,8 +216,9 @@ public class IndicatorController {
                         @PathVariable("indicator_id") String indicatorId,
                         @Parameter(description = "The maximum number of Indicator versions to return - must be at least 1 and cannot exceed 200. The default value is 1.") @RequestParam(value = "limit", defaultValue = "1000") Integer limit,
                         @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId, limit, offset);
                 return new ResponseEntity<>(indicatorService.getIndicatorVersions(indicatorId,
                                 offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -227,7 +238,9 @@ public class IndicatorController {
         public ResponseEntity<Indicator> getIndicatorVersionById(
                         @Parameter(description = "ID of the Indicator", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
                         @Parameter(description = "Version ID of the Indicator", example = "1") @PathVariable("version_id") Integer versionId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId, versionId);
                 return ResponseEntity.ok(indicatorService.getIndicatorVersionById(indicatorId, versionId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
         }
@@ -247,7 +260,9 @@ public class IndicatorController {
         public ResponseEntity<Indicator> restoreIndicatorVersionById(
                 @Parameter(description = "ID of the Indicator", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("indicator_id") String indicatorId,
                 @Parameter(description = "Version ID of the Indicator", example = "1") @PathVariable("version_id") Integer versionId,
-                @RequestHeader HttpHeaders headers) throws LottabyteException {
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId, versionId);
                 return ResponseEntity.ok(indicatorService.restoreIndicatorVersionById(indicatorId, versionId,
                         jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
         }
@@ -256,7 +271,9 @@ public class IndicatorController {
         @RequestMapping(value = "/indicator_types", method = RequestMethod.GET, produces = { "application/json" })
         @Secured(roles = { "indicator_r" }, level = ANY_ROLE)
         public ResponseEntity<List<IndicatorType>> getIndicatorTypes(
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request);
                 return new ResponseEntity<>(indicatorService.getIndicatorTypes(
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -266,7 +283,9 @@ public class IndicatorController {
         @Secured(roles = { "indicator_r" }, level = ANY_ROLE)
         public ResponseEntity<IndicatorType> getIndicatorTypeById(
                         @PathVariable("id") String id,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, id);
                 return new ResponseEntity<>(indicatorService.getIndicatorTypeById(id,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -276,13 +295,15 @@ public class IndicatorController {
                         "application/json" })
         @Secured(roles = { "lo_r" }, level = ANY_ROLE)
         public ResponseEntity<SearchResponse<FlatIndicator>> searchIndicatorsByDomain(
-                        @RequestBody SearchRequestWithJoin request,
+                        @RequestBody SearchRequestWithJoin sr,
                         @PathVariable("domain_id") String domainId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, sr, domainId);
                 String token = HttpUtils.getToken(headers);
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-                SearchResponse<FlatIndicator> res = indicatorService.searchIndicatorsByDomain(request, domainId,
+                SearchResponse<FlatIndicator> res = indicatorService.searchIndicatorsByDomain(sr, domainId,
                                 userDetails);
 
                 return new ResponseEntity<>(res, HttpStatus.OK);
@@ -301,7 +322,9 @@ public class IndicatorController {
         @Secured(roles = { "indicator_r" }, level = ANY_ROLE)
         public ResponseEntity<List<EntitySampleDQRule>> getDQRules(
                         @PathVariable("indicator_id") String indicatorId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -326,8 +349,9 @@ public class IndicatorController {
         public ResponseEntity<EntitySampleDQRule> createDQRule(
                         @PathVariable("indicator_id") String indicatorId,
                         @RequestBody UpdatableEntitySampleDQRule newEntitySampleDQRuleEntity,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId, newEntitySampleDQRuleEntity);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -354,8 +378,9 @@ public class IndicatorController {
                 @Parameter(description = "ID of the Indicator",
                         example = "aa0e33f5-3108-4d45-a530-0307458362d4")
                 @PathVariable("indicator_id") String indicatorId,
-                @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId);
                 Indicator result = indicatorService.archiveIndicatorById(indicatorId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 if (result == null) {
                         ArchiveResponse resp = new ArchiveResponse();
@@ -385,8 +410,9 @@ public class IndicatorController {
                 @Parameter(description = "ID of the Indicator",
                         example = "aa0e33f5-3108-4d45-a530-0307458362d4")
                 @PathVariable("indicator_id") String indicatorId,
-                @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, indicatorId);
                 Indicator result = indicatorService.restoreIndicatorById(indicatorId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(result, HttpStatus.OK);
         }

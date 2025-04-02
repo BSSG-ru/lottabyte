@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
 import ru.bssg.lottabyte.core.model.search.SearchableCustomAttribute;
+import ru.bssg.lottabyte.core.model.search.SearchableRelatedArtifact;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,8 +18,8 @@ public class SearchableSystem extends SearchableArtifact {
     protected String systemFolderId;
 
     @Builder
-    public SearchableSystem(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String systemType, String connectorId, String systemFolderId) {
-        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableSystem(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String systemType, String connectorId, String systemFolderId, List<SearchableRelatedArtifact> relatedArtifacts) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains, relatedArtifacts);
         this.systemType = systemType;
         this.connectorId = connectorId;
         this.systemFolderId = systemFolderId;

@@ -6,7 +6,10 @@ import org.flowable.engine.RuntimeService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import ru.bssg.lottabyte.core.api.LottabyteException;
+import ru.bssg.lottabyte.core.i18n.Message;
 import ru.bssg.lottabyte.core.model.*;
+import ru.bssg.lottabyte.core.model.domain.FlatDomain;
+import ru.bssg.lottabyte.core.model.product.FlatProduct;
 import ru.bssg.lottabyte.core.model.workflow.WorkflowTask;
 import ru.bssg.lottabyte.core.ui.model.*;
 import ru.bssg.lottabyte.core.ui.model.dashboard.DashboardEntity;
@@ -47,7 +50,7 @@ public class ArtifactService {
     private final ArtifactsRelation[] artifactRelations = new ArtifactsRelation[] {
         new ArtifactsRelation(ArtifactsRelation.ArtifactsRelationType.ForeignKey, ArtifactType.domain, ArtifactType.indicator, null, "domain_id", null),
         new ArtifactsRelation(ArtifactsRelation.ArtifactsRelationType.ForeignKey, ArtifactType.domain, ArtifactType.business_entity, null, "domain_id", null),
-        new ArtifactsRelation(ArtifactsRelation.ArtifactsRelationType.ForeignKey, ArtifactType.domain, ArtifactType.product, null, "domain_id", null),
+        new ArtifactsRelation(ArtifactsRelation.ArtifactsRelationType.ForeignKey, ArtifactType.domain, ArtifactType.product, "id", "domain_id", null),
         new ArtifactsRelation(ArtifactsRelation.ArtifactsRelationType.CrossTable, ArtifactType.domain, ArtifactType.system, "domain_id", "system_id", "system_to_domain"),
         new ArtifactsRelation(ArtifactsRelation.ArtifactsRelationType.ForeignKey, ArtifactType.domain, ArtifactType.data_asset, null, "domain_id", null),
 
@@ -315,5 +318,36 @@ public class ArtifactService {
 
     public ArtifactRepository.ServeFileData getImage(String filename, String folder) throws LottabyteException {
         return artifactRepository.getImage(filename, folder);
+    }
+
+    public SearchResponse<FlatArtifact> searchArtifacts(SearchRequestWithJoin request, UserDetails userDetails)
+            throws LottabyteException {
+
+        SearchColumn[] searchableColumns = {
+                new SearchColumn("name", SearchColumn.ColumnType.Text),
+                new SearchColumn("artifact_type", SearchColumn.ColumnType.Text),
+                new SearchColumn("type", SearchColumn.ColumnType.Text),
+                new SearchColumn("tags", SearchColumn.ColumnType.Text),
+                new SearchColumn("modified", SearchColumn.ColumnType.Timestamp),
+                new SearchColumn("created", SearchColumn.ColumnType.Timestamp),
+        };
+
+        ServiceUtils.validateSearchRequestWithJoin(request, searchableColumns, joinColumns, userDetails);
+        ServiceUtils.validateSearchRequestWithJoinState(request, userDetails);
+        SearchResponse<FlatArtifact> res = artifactRepository.searchArtifacts(request, searchableColumns, userDetails);
+
+        res.getItems().stream().forEach(
+                x -> x.setTags(tagService.getArtifactTags(x.getId(), userDetails)
+                        .stream().map(y -> y.getName()).collect(Collectors.toList())));
+
+        return res;
+    }
+
+    public FlatModeledObject getArtifact(String id, UserDetails userDetails) throws LottabyteException {
+        FlatModeledObject res = artifactRepository.getArtifact(id, userDetails);
+        if (res == null)
+            throw new LottabyteException(Message.LBE04001,
+                    userDetails.getLanguage(), id);
+        return res;
     }
 }

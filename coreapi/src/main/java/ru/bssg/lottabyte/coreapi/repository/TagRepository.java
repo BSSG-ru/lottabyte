@@ -223,10 +223,6 @@ public class TagRepository extends GenericArtifactRepository<Tag> {
     }
 
     public List<FlatTag> searchTags(String query, Integer offset, Integer limit, UserDetails userDetails) {
-        log.info("searchTags query: " + query);
-        log.info("searchTags offset: " + offset);
-        log.info("searchTags limit: " + limit);
-
         String q = "%";
         if (query != null && !query.isEmpty())
             q = "%" + query.toLowerCase() + "%";

@@ -29,8 +29,10 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.StewardService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES_STRICT;
@@ -50,6 +52,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class StewardController {
     private final StewardService stewardService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -72,7 +75,9 @@ public class StewardController {
             @Parameter(description = "Artifact ID of the Steward",
             example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("steward_id") String stewardId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, stewardId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -99,7 +104,9 @@ public class StewardController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -122,7 +129,9 @@ public class StewardController {
     @RequestMapping(value = "", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"st_r", "st_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<Steward> createSteward(@RequestBody UpdatableStewardEntity newStewardEntity,
-                                                 @RequestHeader HttpHeaders headers) throws LottabyteException {
+                                                 @RequestHeader HttpHeaders headers,
+                                                 HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newStewardEntity);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -150,7 +159,9 @@ public class StewardController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("steward_id") String stewardId,
             @RequestBody UpdatableStewardEntity stewardEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, stewardId, stewardEntity);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -177,7 +188,9 @@ public class StewardController {
             @Parameter(description = "Artifact ID of the Steward",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("steward_id") String stewardId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, stewardId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -191,12 +204,14 @@ public class StewardController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"st_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatSteward>> searchDomains(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatSteward> res = stewardService.searchStewards(request, userDetails);
+        SearchResponse<FlatSteward> res = stewardService.searchStewards(sr, userDetails);
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
 

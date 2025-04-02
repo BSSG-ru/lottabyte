@@ -22,12 +22,12 @@ import static ru.bssg.lottabyte.core.i18n.Message.LBE03001;
 public class ServiceUtils {
 
     public static void validateSearchRequestState(SearchRequest searchRequest, UserDetails userDetails) throws LottabyteException {
-        if (searchRequest.getState() != null && !EnumUtils.isValidEnum(ArtifactState.class, searchRequest.getState()))
+        if (searchRequest.getState() != null && !searchRequest.getState().equals("ALL") && !EnumUtils.isValidEnum(ArtifactState.class, searchRequest.getState()))
             throw new LottabyteException(LBE03001, userDetails.getLanguage(), searchRequest.getState());
     }
 
     public static void validateSearchRequestWithJoinState(SearchRequestWithJoin searchRequest, UserDetails userDetails) throws LottabyteException {
-        if (searchRequest.getState() != null && !EnumUtils.isValidEnum(ArtifactState.class, searchRequest.getState()))
+        if (searchRequest.getState() != null && !searchRequest.getState().equals("ALL") && !EnumUtils.isValidEnum(ArtifactState.class, searchRequest.getState()))
             throw new LottabyteException(LBE03001, userDetails.getLanguage(), searchRequest.getState());
     }
 
@@ -111,6 +111,8 @@ public class ServiceUtils {
                     return columnVariable + " = "
                             + (needValueQuotes ? "'" + searchRequestFilter.getValue().replaceAll("'", "''") + "'"
                                     : searchRequestFilter.getValue());
+                case IN:
+                    return columnVariable + " IN (" + (searchRequestFilter.getValue()) + ")";
                 case NOT_EQUAL:
                     return columnVariable + " <> "
                             + (needValueQuotes ? "'" + searchRequestFilter.getValue().replaceAll("'", "''") + "'"
@@ -153,6 +155,8 @@ public class ServiceUtils {
                 return " LIKE ? ESCAPE '!'";
             case EQUAL:
                 return " = ?";
+            case IN:
+                return " IN ?";
             case NOT_EQUAL:
                 return " <> ?";
             case LESS:
@@ -233,6 +237,9 @@ public class ServiceUtils {
                     case EQUAL:
                         res = columnVariable + " = ?";
                         break;
+                    case IN:
+                        res = columnVariable + " IN (" + searchRequestFilter.getValue() + ")";
+                        break;
                     case NOT_EQUAL:
                         res = columnVariable + " <> ?";
                         break;
@@ -258,7 +265,10 @@ public class ServiceUtils {
                         res = columnVariable + " @> string_to_array(?,',')";
                         break;
                 }
-                resMap.put(res, statementParameter);
+                if (!searchRequestFilter.getOperator().equals(SearchRequestFilterOperator.IN))
+                    resMap.put(res, statementParameter);
+                else
+                    resMap.put(res, null);
             }
             return resMap;
         }

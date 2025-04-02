@@ -14,6 +14,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import ru.bssg.lottabyte.core.model.search.SearchableCustomAttribute;
+import ru.bssg.lottabyte.core.model.search.SearchableRelatedArtifact;
 
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -28,8 +29,8 @@ public class SearchableDQRule extends SearchableArtifact {
     private String ruleTypeName;
 
     @Builder
-    public SearchableDQRule(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String ruleRef, String settings, String ruleTypeId, String ruleTypeName) {
-        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableDQRule(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String ruleRef, String settings, String ruleTypeId, String ruleTypeName, List<SearchableRelatedArtifact> relatedArtifacts) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains, relatedArtifacts);
         this.ruleRef = ruleRef;
         this.settings = settings;
         this.ruleTypeId = ruleTypeId;

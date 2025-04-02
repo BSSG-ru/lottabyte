@@ -32,8 +32,10 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.SystemConnectionService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Objects;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES_STRICT;
@@ -53,6 +55,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class SystemConnectionController {
     private final SystemConnectionService systemConnectionService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -71,8 +74,9 @@ public class SystemConnectionController {
     @RequestMapping(value = "", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"connection_r", "connection_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<SystemConnection> createSystemConnection(@RequestBody UpdatableSystemConnectionEntity updatableSystemConnectionEntity,
-                                                   @RequestHeader HttpHeaders headers) throws LottabyteException
+                                                                   @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException
     {
+        apiLogService.logApiCall(request, updatableSystemConnectionEntity);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -99,8 +103,10 @@ public class SystemConnectionController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("system_connection_id") String systemConnectionId,
             @RequestBody UpdatableSystemConnectionEntity updatableSystemConnectionEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, systemConnectionId, updatableSystemConnectionEntity);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -127,7 +133,9 @@ public class SystemConnectionController {
             @Parameter(description = "ID of the Connector",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("system_connection_id") String connectorId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, connectorId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -154,7 +162,9 @@ public class SystemConnectionController {
             @Parameter(description = "Artifact ID of the System Connection",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("system_connection_id") String systemConnectionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemConnectionId);
         return new ResponseEntity<>(systemConnectionService.deleteSystemConnection(systemConnectionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -183,7 +193,9 @@ public class SystemConnectionController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId, limit, offset);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -210,7 +222,9 @@ public class SystemConnectionController {
             @Parameter(description = "ID of the System Connection Param",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("param_id") String paramId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, paramId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -241,7 +255,9 @@ public class SystemConnectionController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemConnectionId, limit, offset);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -252,14 +268,16 @@ public class SystemConnectionController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"connection_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatSystemConnection>> searchQuery(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
         log.info(request.toString());
 
-        SearchResponse<FlatSystemConnection> res = systemConnectionService.searchSystemConnection(request, userDetails);
+        SearchResponse<FlatSystemConnection> res = systemConnectionService.searchSystemConnection(sr, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }

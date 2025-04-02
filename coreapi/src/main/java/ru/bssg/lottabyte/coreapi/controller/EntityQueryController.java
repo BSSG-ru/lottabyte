@@ -32,8 +32,10 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.EntityQueryService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.Objects;
 
@@ -54,6 +56,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class EntityQueryController {
     private final EntityQueryService queryService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -76,7 +79,9 @@ public class EntityQueryController {
             @Parameter(description = "Artifact ID of the Query",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("query_id") String queryId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -105,8 +110,10 @@ public class EntityQueryController {
             @PathVariable("entity_id") String entityId,
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, entityId, limit, offset);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -130,7 +137,9 @@ public class EntityQueryController {
     @Secured(roles = {"req_r", "req_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<EntityQuery> createQuery(
             @RequestBody UpdatableEntityQueryEntity newEntityQueryEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newEntityQueryEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(queryService.createQuery(newEntityQueryEntity, userDetails), HttpStatus.OK);
@@ -157,7 +166,9 @@ public class EntityQueryController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("query_id") String queryId,
             @RequestBody UpdatableEntityQueryEntity entityQueryEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId, entityQueryEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(queryService.patchQuery(queryId, entityQueryEntity, false, userDetails), HttpStatus.OK);
@@ -183,7 +194,9 @@ public class EntityQueryController {
             @Parameter(description = "Artifact ID of the Query",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("query_id") String queryId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId);
         EntityQuery result = queryService.deleteQuery(queryId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -198,11 +211,13 @@ public class EntityQueryController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"req_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatEntityQuery>> searchQuery(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
-        SearchResponse<FlatEntityQuery> res = queryService.searchEntityQuery(request, userDetails);
+        SearchResponse<FlatEntityQuery> res = queryService.searchEntityQuery(sr, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -211,13 +226,15 @@ public class EntityQueryController {
     @RequestMapping(value = "/search_by_domain/{domain_id}", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"req_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatEntityQuery>> searchEntityQueryByDomain(
-            @RequestBody SearchRequestWithJoin request,
+            @RequestBody SearchRequestWithJoin sr,
             @PathVariable("domain_id") String domainId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr, domainId);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatEntityQuery> res = queryService.searchEntityQueryByDomain(request, domainId, userDetails);
+        SearchResponse<FlatEntityQuery> res = queryService.searchEntityQueryByDomain(sr, domainId, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -244,8 +261,9 @@ public class EntityQueryController {
             @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId, limit, offset);
         PaginatedArtifactList<EntityQuery> list = queryService.getEntityQueryVersionsById(queryId, offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
     }
@@ -271,7 +289,9 @@ public class EntityQueryController {
             @PathVariable("query_id") String queryId,
             @Parameter(description = "Version ID of the Entity Query", example = "1")
             @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId, versionId);
         return ResponseEntity.ok(queryService.getEntityQueryVersionById(queryId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
@@ -290,7 +310,9 @@ public class EntityQueryController {
     public ResponseEntity<EntityQuery> restoreEntityQueryVersionById(
             @Parameter(description = "ID of the Entity query", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("query_id") String queryId,
             @Parameter(description = "Version ID of the Entity query", example = "1") @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId, versionId);
         return ResponseEntity.ok(queryService.restoreQueryVersionById(queryId, versionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
@@ -314,8 +336,9 @@ public class EntityQueryController {
             @Parameter(description = "ID of the Entity query",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("query_id") String queryId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId);
         EntityQuery result = queryService.archiveQueryById(queryId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -345,8 +368,9 @@ public class EntityQueryController {
             @Parameter(description = "ID of the Query",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("query_id") String queryId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, queryId);
         EntityQuery result = queryService.restoreQueryById(queryId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(result, HttpStatus.OK);
     }

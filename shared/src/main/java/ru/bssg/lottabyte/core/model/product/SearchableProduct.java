@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
 import ru.bssg.lottabyte.core.model.search.SearchableCustomAttribute;
+import ru.bssg.lottabyte.core.model.search.SearchableRelatedArtifact;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,7 +34,7 @@ public class SearchableProduct extends SearchableArtifact {
     private String roles;
 
     @Builder
-    public SearchableProduct(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, List<String> entityAttributeIds, List<String> indicatorIds, List<String> indicatorNames, String domainId, String problem, String consumer, String value, String financeSource, List<String> productTypeIds, List<String> productTypeNames, List<String> productSupplyVariantIds, List<String> productSupplyVariantNames, String link, String limits, String limits_internal, String roles  , List<String> productIds, List<String>  productNames , String entityQueryId) {
+    public SearchableProduct(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, List<String> entityAttributeIds, List<String> indicatorIds, List<String> indicatorNames, String domainId, String problem, String consumer, String value, String financeSource, List<String> productTypeIds, List<String> productTypeNames, List<String> productSupplyVariantIds, List<String> productSupplyVariantNames, String link, String limits, String limits_internal, String roles  , List<String> productIds, List<String>  productNames , String entityQueryId, List<SearchableRelatedArtifact> relatedArtifacts) {
         super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
         this.entityAttributeIds = entityAttributeIds;
         this.indicatorIds = indicatorIds;
@@ -54,5 +55,6 @@ public class SearchableProduct extends SearchableArtifact {
         this.limits = limits;
         this.limits_internal = limits_internal;
         this.roles = roles;
+        this.setRelatedArtifacts(relatedArtifacts);
     }
 }

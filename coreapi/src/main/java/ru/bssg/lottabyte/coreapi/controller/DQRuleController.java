@@ -28,8 +28,10 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.DQRuleService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,6 +49,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class DQRuleController {
         private final DQRuleService dqRuleService;
+        private final APILogService apiLogService;
         private final JwtHelper jwtHelper;
 
         @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Gets DQRule by given guid.", description = "This method can be used to get DQRule by given guid.", operationId = "getDQRuleById")
@@ -61,9 +64,9 @@ public class DQRuleController {
         @RequestMapping(value = "/{dq_rule_id}", method = RequestMethod.GET, produces = { "application/json" })
         @Secured(roles = { "dq_rule_r" }, level = ANY_ROLE)
         public ResponseEntity<DQRule> getDQRuleById(
-                        @Parameter(description = "ID of the DQRule", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("dq_rule_id") String dqRuleId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                @Parameter(description = "ID of the DQRule", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("dq_rule_id") String dqRuleId,
+                @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, dqRuleId);
                 DQRule d = dqRuleService.getDQRuleById(dqRuleId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(d, HttpStatus.OK);
         }
@@ -83,8 +86,8 @@ public class DQRuleController {
         public ResponseEntity<DQRule> getDQRuleVersionById(
                         @Parameter(description = "ID of the DQRule", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("dq_rule_id") String dqRuleId,
                         @Parameter(description = "Version ID of the DQRule", example = "1") @PathVariable("version_id") Integer versionId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, dqRuleId, versionId);
                 DQRule d = dqRuleService.getDQRuleVersionById(dqRuleId, versionId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(d, HttpStatus.OK);
@@ -102,10 +105,12 @@ public class DQRuleController {
         @Secured(roles = { "dq_rule_r" }, level = ANY_ROLE)
         public ResponseEntity<PaginatedArtifactList<DQRule>> getDQRuleVersionsById(
                         @PathVariable("dq_rule_id") String dqRuleId,
-                        @Parameter(description = "The maximum number of DQRule versions to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "1000") Integer limit,
-                        @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @Parameter(description = "The maximum number of DQRule versions to return - must be at least 1 and cannot exceed 200. The default value is 10.")
+                        @RequestParam(value = "limit", defaultValue = "1000") Integer limit,
+                        @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
+                        @RequestParam(value = "offset", defaultValue = "0") Integer offset,
+                        @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, limit, offset);
                 PaginatedArtifactList<DQRule> list = dqRuleService.getDQRuleVersions(dqRuleId, offset, limit,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(list, HttpStatus.OK);
@@ -123,11 +128,13 @@ public class DQRuleController {
         @RequestMapping(value = "", method = RequestMethod.GET, produces = { "application/json" })
         @Secured(roles = { "dq_rule_r" }, level = ANY_ROLE)
         public ResponseEntity<PaginatedArtifactList<DQRule>> getDQRulesPaginated(
-                        @Parameter(description = "The maximum number of DQRules to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "10") Integer limit,
-                        @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
+                        @Parameter(description = "The maximum number of DQRules to return - must be at least 1 and cannot exceed 200. The default value is 10.")
+                        @RequestParam(value = "limit", defaultValue = "10") Integer limit,
+                        @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
+                        @RequestParam(value = "offset", defaultValue = "0") Integer offset,
                         @Parameter(description = "Artifact state.") @RequestParam(value = "state", defaultValue = "PUBLISHED") String artifactState,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, limit, offset, artifactState);
                 PaginatedArtifactList<DQRule> list = dqRuleService.getDQRulesPaginated(offset, limit, artifactState,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(list, HttpStatus.OK);
@@ -144,7 +151,8 @@ public class DQRuleController {
         @RequestMapping(value = "", method = RequestMethod.POST, produces = { "application/json" })
         @Secured(roles = { "dq_rule_r", "dq_rule_u" }, level = ALL_ROLES_STRICT)
         public ResponseEntity<DQRule> createDQRule(@RequestBody UpdatableDQRuleEntity newDQRuleEntity,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, newDQRuleEntity);
                 DQRule d = dqRuleService.createDQRule(newDQRuleEntity,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(d, HttpStatus.OK);
@@ -163,8 +171,8 @@ public class DQRuleController {
         public ResponseEntity<DQRule> patchDQRule(
                         @Parameter(description = "ID of the DQRule", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("dq_rule_id") String dqRuleId,
                         @RequestBody UpdatableDQRuleEntity dqRuleEntity,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, dqRuleId, dqRuleEntity);
                 DQRule d = dqRuleService.updateDQRule(dqRuleId, dqRuleEntity, false,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return new ResponseEntity<>(d, HttpStatus.OK);
@@ -182,8 +190,8 @@ public class DQRuleController {
         @Secured(roles = { "dq_rule_r", "dq_rule_u" }, level = ALL_ROLES_STRICT)
         public ResponseEntity<?> deleteDQRule(
                         @Parameter(description = "ID of the DQRule", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("dq_rule_id") String dqRuleId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+                        @RequestHeader HttpHeaders headers, HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, dqRuleId);
                 DQRule result = dqRuleService.deleteDQRuleById(dqRuleId,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 if (result == null) {
@@ -199,10 +207,11 @@ public class DQRuleController {
         @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json" })
         @Secured(roles = { "dq_rule_r" }, level = ANY_ROLE)
         public ResponseEntity<SearchResponse<FlatDQRule>> searchDQRules(
-                        @RequestBody SearchRequestWithJoin request,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-                return ResponseEntity.ok(dqRuleService.searchDQRules(request,
+                        @RequestBody SearchRequestWithJoin sr,
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, sr);
+                return ResponseEntity.ok(dqRuleService.searchDQRules(sr,
                                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
         }
 
@@ -210,7 +219,9 @@ public class DQRuleController {
         @RequestMapping(value = "/rule_types", method = RequestMethod.GET, produces = { "application/json" })
         @Secured(roles = { "dq_rule_r" }, level = ANY_ROLE)
         public ResponseEntity<List<DQRuleType>> getRuleTypes(
-                @RequestHeader HttpHeaders headers) throws LottabyteException {
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request);
                 return new ResponseEntity<>(dqRuleService.getRuleTypes(
                         jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }
@@ -220,7 +231,9 @@ public class DQRuleController {
         @Secured(roles = { "dq_rule_r" }, level = ANY_ROLE)
         public ResponseEntity<DQRuleType> getRuleTypeById(
                 @PathVariable("id") String id,
-                @RequestHeader HttpHeaders headers) throws LottabyteException {
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, id);
                 return new ResponseEntity<>(dqRuleService.getRuleTypeById(id,
                         jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
         }

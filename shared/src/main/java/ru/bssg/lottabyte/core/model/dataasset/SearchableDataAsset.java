@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
 import ru.bssg.lottabyte.core.model.search.SearchableCustomAttribute;
+import ru.bssg.lottabyte.core.model.search.SearchableRelatedArtifact;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -34,8 +35,8 @@ public class SearchableDataAsset extends SearchableArtifact {
     protected String techName;
 
     @Builder
-    public SearchableDataAsset(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String systemId, String domainId, String entityId, String systemName, String domainName, String entityName, Integer rowsCount, Integer dataSize, Boolean hasQuery, Boolean hasSample, Boolean hasStatistics, String roles, String techName) {
-        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableDataAsset(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String systemId, String domainId, String entityId, String systemName, String domainName, String entityName, Integer rowsCount, Integer dataSize, Boolean hasQuery, Boolean hasSample, Boolean hasStatistics, String roles, String techName, List<SearchableRelatedArtifact> relatedArtifacts) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains, relatedArtifacts);
         this.systemId = systemId;
         this.domainId = domainId;
         this.entityId = entityId;

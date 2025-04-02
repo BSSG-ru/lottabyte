@@ -1594,6 +1594,27 @@ public class EntityService extends WorkflowableService<DataEntity> {
                 return res;
         }
 
+        public SearchResponse<FlatDataEntityAttribute> searchAttributesForProduct(SearchRequestWithJoin request,
+                                                                                  String productId, UserDetails userDetails) throws LottabyteException {
+                ServiceUtils.validateSearchRequestWithJoin(request, searchableAttrColumns, joinAttrColumns,
+                        userDetails);
+                if (productId == null || productId.isEmpty() || !productId
+                        .matches("[0-9a-fA-F]{8}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{4}\\-[0-9a-fA-F]{12}")) {
+                        throw new LottabyteException(Message.LBE03101,
+                                userDetails.getLanguage(), productId);
+                }
+
+                SearchResponse<FlatDataEntityAttribute> res = entityRepository.searchAttributesForProduct(request,
+                        productId,
+                        searchableAttrColumns, joinAttrColumns, userDetails);
+
+                res.getItems().stream().forEach(
+                        x -> x.setTags(tagService.getArtifactTags(x.getId(), userDetails)
+                                .stream().map(y -> y.getName()).collect(Collectors.toList())));
+
+                return res;
+        }
+
         public SearchResponse<FlatDataEntityAttribute> searchAttributes(SearchRequestWithJoin request,
                         UserDetails userDetails) throws LottabyteException {
                 ServiceUtils.validateSearchRequestWithJoin(request, searchableAttrColumns, joinAttrColumns,
@@ -1646,7 +1667,7 @@ public class EntityService extends WorkflowableService<DataEntity> {
                         .systemIds(dataEntity.getEntity().getSystemIds())
                         .roles(dataEntity.getEntity().getRoles())
                         .techName(dataEntity.getEntity().getTechName())
-
+                        .relatedArtifacts(new ArrayList<>())
                         .domains(entityRepository.getDomainIdsByEntityId(dataEntity.getId(), userDetails)).build();
 
                 String be_id = dataEntity.getEntity().getBusinessEntityId();
@@ -1669,6 +1690,9 @@ public class EntityService extends WorkflowableService<DataEntity> {
                                         attrs.stream().map(dea -> dea.getEntity().getDescription())
                                                         .collect(Collectors.toList()));
                 }
+
+                sa.addRelatedArtifact("business_entity", dataEntity.getEntity().getBusinessEntityId());
+                sa.addRelatedArtifacts("system", dataEntity.getEntity().getSystemIds());
 
                 return sa;
         }

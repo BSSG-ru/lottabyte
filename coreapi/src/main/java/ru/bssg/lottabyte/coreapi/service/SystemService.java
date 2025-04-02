@@ -939,6 +939,7 @@ public class SystemService extends WorkflowableService<System> {
             .artifactState(((WorkflowableMetadata)system.getMetadata()).getState().name())
             .effectiveStartDate(system.getMetadata().getEffectiveStartDate())
             .effectiveEndDate(system.getMetadata().getEffectiveEndDate())
+            .relatedArtifacts(new ArrayList<>())
             .tags(Helper.getEmptyListIfNull(system.getMetadata().getTags()).stream()
                     .map(x -> x.getName()).collect(Collectors.toList()))
 
@@ -947,6 +948,10 @@ public class SystemService extends WorkflowableService<System> {
             .systemType(system.getEntity().getSystemType())
             .connectorId(system.getEntity().getConnectorId())
             .systemFolderId(system.getEntity().getSystemFolderId()).build();
+
+        sa.addRelatedArtifact("connector", system.getEntity().getConnectorId());
+        sa.addRelatedArtifacts("domain", system.getEntity().getDomainIds());
+
         return sa;
     }
 

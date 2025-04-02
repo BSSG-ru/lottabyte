@@ -15,7 +15,6 @@ import java.time.LocalDateTime;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @EqualsAndHashCode(callSuper=false)
 public class FlatWorkflowProcessDefinition extends FlatModeledObject {
-    private ArtifactType artifactType;
     private String artifactTypeName;
     private ArtifactAction artifactAction;
     private String processDefinitionKey;
@@ -28,7 +27,6 @@ public class FlatWorkflowProcessDefinition extends FlatModeledObject {
 
     public FlatWorkflowProcessDefinition(WorkflowProcessDefinition d) {
         super();
-        this.artifactType = d.getArtifactType();
         this.artifactTypeName = d.getArtifactTypeName();
         this.artifactAction = d.getArtifactAction();
         this.processDefinitionKey = d.getProcessDefinitionKey();

@@ -27,7 +27,10 @@ import ru.bssg.lottabyte.core.ui.model.SearchResponse;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.EnumerationService;
+
+import javax.servlet.http.HttpServletRequest;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES_STRICT;
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
@@ -46,6 +49,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class EnumerationController {
     private final EnumerationService enumerationService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -68,8 +72,9 @@ public class EnumerationController {
             @Parameter(description = "Artifact ID of the Enumeration Entity",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("enumeration_id") String enumerationId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, enumerationId);
         return new ResponseEntity<>(enumerationService.getEnumerationById(enumerationId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -93,9 +98,10 @@ public class EnumerationController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
-
+        apiLogService.logApiCall(request, limit, offset);
         return new ResponseEntity<>(enumerationService.getEnumerationPaginated(offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -116,8 +122,9 @@ public class EnumerationController {
     @Secured(roles = {"enumeration_r", "enumeration_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<Enumeration> createEnumeration(
             @RequestBody UpdatableEnumerationEntity newEnumerationEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newEnumerationEntity);
         return new ResponseEntity<>(enumerationService.createEnumeration(newEnumerationEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -142,8 +149,9 @@ public class EnumerationController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("enumeration_id") String enumerationId,
             @RequestBody UpdatableEnumerationEntity enumerationEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, enumerationId, enumerationEntity);
         return new ResponseEntity<>(enumerationService.patchEnumeration(enumerationId, enumerationEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -167,18 +175,20 @@ public class EnumerationController {
             @Parameter(description = "Artifact ID of the Enumeration Entity to be deleted",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("enumeration_id") String enumerationId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, enumerationId);
         return new ResponseEntity<>(enumerationService.deleteEnumeration(enumerationId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
     @Hidden
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     public ResponseEntity<SearchResponse<FlatEnumeration>> searchEnumeration(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        return new ResponseEntity<>(enumerationService.searchEnumeration(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        return new ResponseEntity<>(enumerationService.searchEnumeration(sr, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
     @Hidden
@@ -190,8 +200,9 @@ public class EnumerationController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, enumerationId, limit, offset);
         return new ResponseEntity<>(enumerationService.getEnumerationVersions(enumerationId,
                 offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }

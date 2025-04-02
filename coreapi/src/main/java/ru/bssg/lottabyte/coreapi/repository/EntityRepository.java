@@ -807,6 +807,61 @@ public class EntityRepository extends WorkflowableRepository<DataEntity> {
         return res;
     }
 
+    public SearchResponse<FlatDataEntityAttribute> searchAttributesForProduct(SearchRequestWithJoin searchRequest,
+                                                                              String productId, SearchColumn[] searchableColumns, SearchColumnForJoin[] searchableColumnsForJoin,
+                                                                              UserDetails userDetails) {
+
+        SearchSQLParts searchSQLParts = getSearchSQLParts(searchRequest, searchableColumns, null, false, userDetails);
+
+        String orderby = searchSQLParts.getOrderBy();
+        String where = searchSQLParts.getWhere();
+        String join = searchSQLParts.getJoin();
+        List<Object> whereValues = searchSQLParts.getWhereValues();
+
+        if (where.isEmpty()) {
+            where = " where tbl1.entity_id IN (SELECT da.entity_id FROM da_" + userDetails.getTenant() + ".data_asset da JOIN da_"
+                + userDetails.getTenant() + ".reference r ON r.target_id=da.id WHERE r.source_id='" + productId + "' AND r.reference_type='PRODUCT_TO_DATA_ASSET')";
+        } else {
+            where = where + " AND tbl1.entity_id IN (SELECT da.entity_id FROM da_" + userDetails.getTenant() + ".data_asset da JOIN da_"
+                    + userDetails.getTenant() + ".reference r ON r.target_id=da.id WHERE r.source_id='" + productId + "' AND r.reference_type='PRODUCT_TO_DATA_ASSET')";
+        }
+
+        String subQuery = "SELECT ea.*, eat.name AS attribute_type_name, t.tags FROM da_" + userDetails.getTenant()
+                + ".entity_attribute ea LEFT JOIN da_" + userDetails.getTenant()
+                + ".entity_attribute_type eat ON ea.attribute_type=eat.id "
+                + "left join (select e2t.artifact_id, string_agg(t.name, ',') as tags from da_"
+                + userDetails.getTenant() + ".tag t join da_" + userDetails.getTenant()
+                + ".tag_to_artifact e2t on e2t.tag_id=t.id group by e2t.artifact_id) t on t.artifact_id=ea.id ";
+        String queryForItems = "SELECT tbl1.*, eat.name as attribute_type_name FROM (" + subQuery + ") as tbl1 " + join
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_attribute_type eat ON tbl1.attribute_type=eat.id "
+                + where +
+                " ORDER BY " + orderby + " OFFSET " + searchRequest.getOffset() + " LIMIT "
+                + searchRequest.getLimit();
+
+        List<FlatDataEntityAttribute> items = jdbcTemplate.query(queryForItems, new FlatDataEntityAttributeRowMapper(),
+                whereValues.toArray());
+
+        String queryForTotal = "SELECT COUNT(tbl1.id) FROM (" + subQuery + ") as tbl1 " + join
+                + " LEFT JOIN da_" + userDetails.getTenant() + ".entity_attribute_type eat ON tbl1.attribute_type=eat.id "
+                + where;
+        final int[] count = { 0 };
+        jdbcTemplate.query(
+                queryForTotal,
+                new RowCallbackHandler() {
+                    @Override
+                    public void processRow(ResultSet rs) throws SQLException {
+                        count[0] = rs.getInt("count");
+                    }
+                },
+                whereValues.toArray());
+
+        int total = count[0];
+
+        SearchResponse<FlatDataEntityAttribute> res = new SearchResponse<FlatDataEntityAttribute>(total, searchRequest.getLimit(), searchRequest.getOffset(), items);
+
+        return res;
+    }
+
     public SearchResponse<FlatDataEntityAttribute> searchAttributes(SearchRequestWithJoin searchRequest,
             SearchColumn[] searchableColumns, SearchColumnForJoin[] searchableColumnsForJoin, UserDetails userDetails) {
 

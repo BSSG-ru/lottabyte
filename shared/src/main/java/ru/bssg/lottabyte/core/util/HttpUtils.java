@@ -8,9 +8,19 @@ import ru.bssg.lottabyte.core.usermanagement.model.Language;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 
+import javax.servlet.http.HttpServletRequest;
+
 public class HttpUtils {
     public static String getToken(HttpHeaders headers) throws LottabyteException {
         String h = (headers == null ? null : headers.getFirst(HttpHeaders.AUTHORIZATION));
+        if (h == null || h.isEmpty())
+            throw new LottabyteException(Message.LBE00031, Language.ru);
+
+        return h.replace("Bearer ","");
+    }
+
+    public static String getToken(HttpServletRequest request) throws LottabyteException {
+        String h = (request == null ? null : request.getHeader(HttpHeaders.AUTHORIZATION));
         if (h == null || h.isEmpty())
             throw new LottabyteException(Message.LBE00031, Language.ru);
 

@@ -180,6 +180,7 @@ public class DomainService extends WorkflowableService<Domain> {
             String newPublishedId = domainRepository.publishDomainDraft(draftDomainId, null, userDetails);
             addDomainLinks(newPublishedId, draft.getEntity(), newPublishedId, userDetails);
             tagService.mergeTags(draftDomainId, serviceArtifactType, newPublishedId, serviceArtifactType, userDetails);
+            mergeRecommendedArtifacts(draft.getEntity(), newPublishedId, newPublishedId, userDetails);
             Domain d = getDomainById(newPublishedId, userDetails);
             elasticsearchService.insertElasticSearchEntity(
                     Collections.singletonList(getSearchableArtifact(d, userDetails)), userDetails);
@@ -192,6 +193,7 @@ public class DomainService extends WorkflowableService<Domain> {
             updateDomainStewards(publishedId, draft.getEntity().getStewards(),
                     currentPublished.getEntity().getStewards(), userDetails);
             tagService.mergeTags(draftDomainId, serviceArtifactType, publishedId, serviceArtifactType, userDetails);
+            mergeRecommendedArtifacts(draft.getEntity(), publishedId, publishedId, userDetails);
             Domain d = getDomainById(publishedId, userDetails);
             elasticsearchService.insertElasticSearchEntity(
                     Collections.singletonList(getSearchableArtifact(d, userDetails)), userDetails);
@@ -354,7 +356,7 @@ public class DomainService extends WorkflowableService<Domain> {
             for (String s : domain.getStewards())
                 stewardService.addStewardToDomain(s, domainId, false, userDetails);
         }
-        mergeRecommendedArtifacts(domain, domainId, domainPublishedId, userDetails);
+
     }
 
     private void mergeRecommendedArtifacts(DomainEntity fromDomainEntity, String toDomainId, String publishedDomainId, UserDetails userDetails) throws LottabyteException {
@@ -490,9 +492,11 @@ public class DomainService extends WorkflowableService<Domain> {
             domainRepository.createDomainDraft(domainId, draftId, workflowTaskId, userDetails);
             addDomainLinks(draftId, current.getEntity(), domainId, userDetails);
             tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
+            mergeRecommendedArtifacts(domainEntity, draftId, domainId, userDetails);
 
         } else {
             draftId = domainId;
+            mergeRecommendedArtifacts(domainEntity, draftId, ((WorkflowableMetadata) current.getMetadata()).getPublishedId(), userDetails);
         }
         domainRepository.updateDomain(draftId, domainEntity, updateNulls, userDetails);
         if (domainEntity.getSystemIds() != null && !domainEntity.getSystemIds().isEmpty())
@@ -630,6 +634,7 @@ public class DomainService extends WorkflowableService<Domain> {
         draftId = domainRepository.createDomainDraft(current.getId(), draftId, workflowTaskId, userDetails);
         addDomainLinks(draftId, current.getEntity(), current.getId(), userDetails);
         tagService.mergeTags(current.getId(), serviceArtifactType, draftId, serviceArtifactType, userDetails);
+        mergeRecommendedArtifacts(current.getEntity(), draftId, null, userDetails);
 
         return draftId;
     }
@@ -831,8 +836,10 @@ public class DomainService extends WorkflowableService<Domain> {
         .tags(Helper.getEmptyListIfNull(d.getMetadata().getTags()).stream()
                 .map(x -> x.getName()).collect(Collectors.toList()))
         .domains(Collections.singletonList(d.getId().toString()))
-
+        .relatedArtifacts(new ArrayList<>())
         .stewards(d.getEntity().getStewards()).build();
+
+        sa.addRelatedArtifacts("system", d.getEntity().getSystemIds());
 
         return sa;
     }

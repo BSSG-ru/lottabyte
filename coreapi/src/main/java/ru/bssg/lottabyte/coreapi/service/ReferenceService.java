@@ -48,6 +48,9 @@ public class ReferenceService {
     public List<Reference> getAllReferenceBySourceIdAndRefType(String sourceId, ReferenceType referenceType, UserDetails userDetails) {
         return referenceRepository.getAllReferenceBySourceIdAndRefType(sourceId, referenceType, userDetails);
     }
+    public List<Reference> getAllReferenceByTargetIdAndRefType(String targetId, ReferenceType referenceType, UserDetails userDetails) {
+        return referenceRepository.getAllReferenceByTargetIdAndRefType(targetId, referenceType, userDetails);
+    }
     public List<Reference> getAllReferenceByPublishedIdAndTypeAndVersionId(String publishedId, Integer versionId, String type, UserDetails userDetails) {
         return referenceRepository.getAllReferenceByPublishedIdAndTypeAndVersionId(publishedId, versionId, type, userDetails);
     }
@@ -105,6 +108,10 @@ public class ReferenceService {
     public void deleteReferenceBySourceId(String id, UserDetails userDetails) {
         if (getReferenceBySourceId(id, userDetails) != null)
             referenceRepository.deleteReferenceBySourceId(id, userDetails);
+    }
+
+    public void deleteReferenceByTargetIdAndRefType(String id, ReferenceType referenceType, UserDetails userDetails) {
+        referenceRepository.deleteReferenceByTargetIdAndRefType(id, referenceType, userDetails);
     }
 
     public void deleteReferenceBySourceIdAndRefType(String id, ReferenceType referenceType, UserDetails userDetails) {

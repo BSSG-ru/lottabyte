@@ -77,6 +77,13 @@ public class QueryHelper {
             sb.append(getJoinQuery(ArtifactType.indicator, userDetails)).append(" and indicator.state='PUBLISHED' ");
             sb.append(")))");
         }
+        if (artifactType == ArtifactType.etl) {
+            sb.append("((dq_rule_tasks.system_id in (");
+            sb.append("select system.id from da_" + userDetails.getTenant() + ".system ");
+            sb.append(getJoinQuery(ArtifactType.system, userDetails)).append(" and system.state='PUBLISHED' ");
+            sb.append(")))");
+
+        }
         return sb.toString();
     }
 
@@ -172,7 +179,7 @@ public class QueryHelper {
                 where += domainIdField + " IN ('" + StringUtils.join(userDetails.getUserDomains(), "','") + "')";
         }
 
-        if (filterByState) {
+        if (filterByState && (searchRequest.getState() == null || !searchRequest.getState().equals("ALL"))) {
             if (where != null && !where.isEmpty()) {
                 if (searchRequest.getState() != null) {
                     where += " and tbl1.STATE = '" + searchRequest.getState() + "' ";

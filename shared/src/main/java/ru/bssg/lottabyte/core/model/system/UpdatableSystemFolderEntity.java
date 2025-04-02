@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 import ru.bssg.lottabyte.core.model.system.SystemFolderEntity;
 
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper=false)
+@ToString(callSuper = true)
 public class UpdatableSystemFolderEntity extends SystemFolderEntity {
 
     public UpdatableSystemFolderEntity(SystemFolderEntity fromCopy) throws LottabyteException {

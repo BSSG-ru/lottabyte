@@ -30,8 +30,10 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.SystemService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -53,6 +55,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class SystemController {
     private final SystemService systemService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -75,8 +78,9 @@ public class SystemController {
             @Parameter(description = "Artifact ID of the System",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("system_id") String systemId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId);
         return new ResponseEntity<>(systemService.getSystemById(systemId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -101,7 +105,9 @@ public class SystemController {
             @PathVariable("system_id") String systemId,
             @Parameter(description = "Version ID of the System", example = "1")
             @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId, versionId);
         return ResponseEntity.ok(systemService.getSystemVersionById(systemId, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
 
@@ -120,7 +126,9 @@ public class SystemController {
     public ResponseEntity<System> restoreSystemVersionById(
             @Parameter(description = "ID of the System", example = "aa0e33f5-3108-4d45-a530-0307458362d4") @PathVariable("system_id") String systemId,
             @Parameter(description = "Version ID of the System", example = "1") @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId, versionId);
         return ResponseEntity.ok(systemService.restoreSystemVersionById(systemId, versionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))));
     }
@@ -147,8 +155,9 @@ public class SystemController {
             @RequestParam(value="limit", defaultValue = "1000") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId, limit, offset);
         PaginatedArtifactList<System> list = systemService.getSystemVersions(
                 systemId, offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(list, HttpStatus.OK);
@@ -176,8 +185,10 @@ public class SystemController {
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
             @Parameter(description = "Artifact state.")
             @RequestParam(value="state", defaultValue = "PUBLISHED") String artifactState,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset, artifactState);
         return new ResponseEntity<>(systemService.getSystemsPaginated(offset, limit, artifactState, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -198,7 +209,9 @@ public class SystemController {
     @Secured(roles = {"system_r", "system_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<System> createSystem(
             @RequestBody UpdatableSystemEntity newSystemEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, newSystemEntity);
         return new ResponseEntity<>(systemService.createSystem(newSystemEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -223,7 +236,9 @@ public class SystemController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("system_id") String systemId,
             @RequestBody UpdatableSystemEntity systemEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId, systemEntity);
         return new ResponseEntity<>(systemService.patchSystem(systemId, systemEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -246,8 +261,9 @@ public class SystemController {
             @Parameter(description = "Artifact ID of the System",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("system_id") String systemId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId);
         System result = systemService.deleteSystem(systemId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -281,7 +297,9 @@ public class SystemController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("folder_id") String folderId,
             @RequestParam(value="include_children", defaultValue = "true") Boolean includeChildren,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, folderId, includeChildren);
         return new ResponseEntity<>(systemService.getSystemFolderById(folderId, includeChildren, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -304,7 +322,9 @@ public class SystemController {
             @Parameter(description = "Include children",
                     example = "true")
             @RequestParam(value="include_children", defaultValue = "true") Boolean includeChildren,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, includeChildren);
          return new ResponseEntity<>(systemService.getRootFolders(includeChildren, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -325,8 +345,10 @@ public class SystemController {
     @Secured(roles = {"system_r", "system_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<SystemFolder> createFolder(
             @RequestBody UpdatableSystemFolderEntity newSystemFolderEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException
     {
+        apiLogService.logApiCall(request, newSystemFolderEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         // 1. Ignore "children" attribute on body
@@ -360,8 +382,10 @@ public class SystemController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("folder_id") String folderId,
             @RequestBody UpdatableSystemFolderEntity systemFolderEntity,
-            @RequestHeader HttpHeaders headers) throws LottabyteException
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException
     {
+        apiLogService.logApiCall(request, folderId, systemFolderEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         // 1. Ignore "children" attribute on body
@@ -395,7 +419,9 @@ public class SystemController {
             @Parameter(description = "Artifact ID of the System Folder",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("folder_id") String folderId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, folderId);
         return new ResponseEntity<>(systemService.deleteFolder(folderId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -420,8 +446,10 @@ public class SystemController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, domainId, limit, offset);
         return new ResponseEntity<>(systemService.getPaginatedSystemsWithoutDomain(domainId, offset, limit, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -431,14 +459,16 @@ public class SystemController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"system_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatSystem>> searchSystems(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
         log.info(request.toString());
 
-        SearchResponse<FlatSystem> res = systemService.searchSystems(request, userDetails);
+        SearchResponse<FlatSystem> res = systemService.searchSystems(sr, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }
@@ -447,7 +477,9 @@ public class SystemController {
     @RequestMapping(value = "/types", method = RequestMethod.GET, produces = { "application/json" })
     @Secured(roles = {"system_r"}, level = ANY_ROLE)
     public ResponseEntity<List<SystemType>> getSystemTypes(
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request);
         return new ResponseEntity<>(systemService.getSystemTypes(jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -470,8 +502,9 @@ public class SystemController {
             @Parameter(description = "ID of the System",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("system_id") String systemId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId);
         System result = systemService.archiveSystemById(systemId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         if (result == null) {
             ArchiveResponse resp = new ArchiveResponse();
@@ -501,8 +534,9 @@ public class SystemController {
             @Parameter(description = "ID of the System",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("system_id") String systemId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, systemId);
         System result = systemService.restoreSystemById(systemId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(result, HttpStatus.OK);
     }

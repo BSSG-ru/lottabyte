@@ -25,6 +25,7 @@ import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
 import ru.bssg.lottabyte.coreapi.service.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.*;
 
@@ -44,6 +45,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class ElasticsearchController {
     private final ElasticsearchService elasticsearchService;
+    private final SearchQueryService searchQueryService;
     private final JwtHelper jwtHelper;
     private final DomainService domainService;
     private final StewardService stewardService;
@@ -56,7 +58,9 @@ public class ElasticsearchController {
     private final EntityQueryService queryService;
     private final IndicatorService indicatorService;
     private final BusinessEntityService businessEntityService;
+    private final ETLService etlService;
     private final MetadataService metadataService;
+    private final APILogService apiLogService;
 
     @Operation(
             security = @SecurityRequirement(name = "bearerAuth"),
@@ -98,8 +102,10 @@ public class ElasticsearchController {
                     "    }\n" +
                     "}")
             @RequestBody String query,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws Exception {
+        apiLogService.logApiCall(request, query);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetail = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(elasticsearchService.searchPost(query, userDetail), HttpStatus.OK);
@@ -120,8 +126,9 @@ public class ElasticsearchController {
     @RequestMapping(value = "/insertAll", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"elastic_search_r", "elastic_search_u"}, level = ALL_ROLES_STRICT)
     public void insertAllSearchableArtifact(
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException, IOException {
+        apiLogService.logApiCall(request);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetail = jwtHelper.getUserDetail(token);
 
@@ -129,40 +136,86 @@ public class ElasticsearchController {
 
         List<SearchableArtifact> searchableArtifactList = new ArrayList<>();
 
-        domainService.getDomainsPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
-                .forEach(x -> searchableArtifactList.add(domainService.getSearchableArtifact(x, userDetail)));
-        domainService.getDomainsPaginated(0, 10000, ArtifactState.ARCHIVED.name(), userDetail).getResources()
-                .forEach(x -> searchableArtifactList.add(domainService.getSearchableArtifact(x, userDetail)));
-        systemService.getSystemsPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
-                .forEach(x -> searchableArtifactList.add(systemService.getSearchableArtifact(x, userDetail)));
+        SearchRequestWithJoin sr = new SearchRequestWithJoin();
+
+        domainService.searchDomains(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(domainService.getSearchableArtifact(domainService.getDomainById(x.getId(), userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        systemService.searchSystems(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(systemService.getSearchableArtifact(systemService.getSystemById(x.getId(), userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        entityService.searchDataEntities(sr, userDetail).getItems().forEach(x -> {
+            searchableArtifactList.add(entityService.getSearchableArtifact(entityService.getEntityById(x.getId(), userDetail), userDetail));
+        });
+
+        entitySampleService.searchEntitySamples(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(entitySampleService.getSearchableArtifact(entitySampleService.getEntitySampleById(x.getId(), false, userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        queryService.searchEntityQuery(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(queryService.getSearchableArtifact(queryService.getEntityQueryById(x.getId(), userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        indicatorService.searchIndicators(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(indicatorService.getSearchableArtifact(indicatorService.getIndicatorById(x.getId(), userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        businessEntityService.searchBusinessEntity(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(businessEntityService.getSearchableArtifact(businessEntityService.getBusinessEntityById(x.getId(), userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        dataAssetService.searchDataAssets(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(dataAssetService.getSearchableArtifact(dataAssetService.getDataAssetById(x.getId(), userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        productService.searchProducts(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(productService.getSearchableArtifact(productService.getProductById(x.getId(), userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        etlService.searchETL(sr, userDetail).getItems().forEach(x -> {
+            try {
+                searchableArtifactList.add(etlService.getSearchableArtifact(etlService.getETLById(x.getId(), userDetail), userDetail));
+            } catch (LottabyteException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
         stewardService.getStewardsPaginated(0, 10000, userDetail).getResources()
                 .forEach(x -> searchableArtifactList.add(stewardService.getSearchableArtifact(x, userDetail)));
-        entityService.getAllEntitiesPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
-                .forEach(x -> searchableArtifactList.add(entityService.getSearchableArtifact(x, userDetail)));
-        entitySampleService.getEntitySampleWithPaging(0, 10000, true, userDetail).getResources()
-                .forEach(x -> searchableArtifactList.add(entitySampleService.getSearchableArtifact(x, userDetail)));
-        queryService.getAllEntityQueriesPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
-                .forEach(x -> {
-                    try {
-                        searchableArtifactList.add(queryService.getSearchableArtifact(x, userDetail));
-                    } catch (LottabyteException e) {
-                        log.error(e.getMessage(), e);
-                    }
-                });
-        indicatorService.getIndicatorsPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
-                .forEach(x -> searchableArtifactList.add(indicatorService.getSearchableArtifact(x, userDetail)));
-        businessEntityService.getBusinessEntitiesPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
-                .forEach(x -> searchableArtifactList.add(businessEntityService.getSearchableArtifact(x, userDetail)));
-        dataAssetService.getAllDataAssetPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
-                .forEach(x -> {
-                    try {
-                        searchableArtifactList.add(dataAssetService.getSearchableArtifact(x, userDetail));
-                    } catch (LottabyteException e) {
-                        log.error(e.getMessage(), e);
-                    }
-                });
-        productService.getAllProductsPaginated(0, 10000, ArtifactState.PUBLISHED.name(), userDetail).getResources()
-                .forEach(x -> searchableArtifactList.add(productService.getSearchableArtifact(x, userDetail)));
 
         SearchRequestWithJoin req = new SearchRequestWithJoin();
         req.setFilters(new ArrayList<>());
@@ -244,13 +297,15 @@ public class ElasticsearchController {
             @ApiResponse(responseCode = "403", description = "Forbidden"),
             @ApiResponse(responseCode = "500", description = "Internal Server error")
     })
-    @RequestMapping(value = "/all/{indexName}", method = RequestMethod.DELETE, produces = { "application/json"})
+    @RequestMapping(value = "/all", method = RequestMethod.DELETE, produces = { "application/json"})
     @Secured(roles = {"elastic_search_r", "elastic_search_u"}, level = ALL_ROLES_STRICT)
     public void deleteAllDocumentFromIndexElasticSearch(
             @Parameter(description = "indexName",example = "category")
-            @PathVariable("indexName") String indexName,
-            @RequestHeader HttpHeaders headers
+            @RequestParam(value="indexName", defaultValue = "category") String indexName,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws Exception {
+        apiLogService.logApiCall(request, indexName);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetail = jwtHelper.getUserDetail(token);
         elasticsearchService.deleteAllDocumentFromIndexElasticSearch(indexName, userDetail);
@@ -273,8 +328,10 @@ public class ElasticsearchController {
     public void insertElasticSearchEntity(
             @Parameter(description = "searchableArtifactList")
             @RequestBody List<SearchableArtifact> searchableArtifactList,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws Exception {
+        apiLogService.logApiCall(request, searchableArtifactList);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetail = jwtHelper.getUserDetail(token);
         elasticsearchService.insertElasticSearchEntity(searchableArtifactList, userDetail);
@@ -297,10 +354,46 @@ public class ElasticsearchController {
     public void updateElasticSearchEntity(
             @Parameter(description = "searchableArtifactList")
             @RequestBody List<SearchableArtifact> searchableArtifactList,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws Exception {
+        apiLogService.logApiCall(request, searchableArtifactList);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetail = jwtHelper.getUserDetail(token);
         elasticsearchService.updateElasticSearchEntity(searchableArtifactList, userDetail);
+    }
+
+    @RequestMapping(value = "/queries/popular/{count}", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"elastic_search_r"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<List<String>> getPopularQueries(@PathVariable("count") Integer count,
+                                                          @RequestBody String search,
+                                                          @RequestHeader HttpHeaders headers,
+                                                          HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, count);
+        String token = HttpUtils.getToken(headers);
+        UserDetails userDetail = jwtHelper.getUserDetail(token);
+        return new ResponseEntity<>(searchQueryService.getPopularQueries(search, count, userDetail), HttpStatus.OK);
+    }
+
+    @RequestMapping(value = "/queries/my/{count}", method = RequestMethod.GET, produces = { "application/json"})
+    @Secured(roles = {"elastic_search_r"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<List<String>> getMyQueries(@PathVariable("count") Integer count,
+                                                          @RequestHeader HttpHeaders headers,
+                                                          HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, count);
+        String token = HttpUtils.getToken(headers);
+        UserDetails userDetail = jwtHelper.getUserDetail(token);
+        return new ResponseEntity<>(searchQueryService.getUserQueries(count, userDetail), HttpStatus.OK);
+    }
+
+    @RequestMapping(value = "/queries/save", method = RequestMethod.POST, produces = { "application/json"})
+    @Secured(roles = {"elastic_search_r"}, level = ALL_ROLES_STRICT)
+    public ResponseEntity<Boolean> saveQuery(@RequestBody String query,
+                                             @RequestHeader HttpHeaders headers,
+                                             HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, query);
+        String token = HttpUtils.getToken(headers);
+        UserDetails userDetail = jwtHelper.getUserDetail(token);
+        return new ResponseEntity<>(searchQueryService.saveQuery(query, userDetail), HttpStatus.OK);
     }
 }

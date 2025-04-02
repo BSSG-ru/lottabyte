@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -17,4 +18,15 @@ public class SearchRequestWithJoin {
     private List<SearchRequestFilter> filters;
     private List<SearchRequestFilterForJoin> filtersForJoin;
     private String state;
+
+    public SearchRequestWithJoin() {
+        setSort("name+");
+        setGlobalQuery("");
+        setLimit(10000);
+        setOffset(0);
+        setLimitSteward(false);
+        setFilters(new ArrayList<>());
+        setFiltersForJoin(new ArrayList<>());
+        setState("PUBLISHED");
+    }
 }

@@ -35,8 +35,10 @@ import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
 
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.QualityTaskService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -53,6 +55,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class QualityTaskController {
         private final QualityTaskService qualityTaskService;
+        private final APILogService apiLogService;
         private final JwtHelper jwtHelper;
 
         @Operation(security = @SecurityRequirement(name = "bearerAuth"), summary = "Get Task .", description = "Get Task.")
@@ -66,9 +69,11 @@ public class QualityTaskController {
         @RequestMapping(method = RequestMethod.GET, produces = { "application/json" })
         @Secured(roles = { "quality_task_r" }, level = ANY_ROLE)
         public ResponseEntity<PaginatedArtifactList<QualityTask>> getQualityTasksPaginated(
-                        @Parameter(description = "The maximum number of Tasks to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "10") Integer limit,
-                        @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                @Parameter(description = "The maximum number of Tasks to return - must be at least 1 and cannot exceed 200. The default value is 10.") @RequestParam(value = "limit", defaultValue = "10") Integer limit,
+                @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.") @RequestParam(value = "offset", defaultValue = "0") Integer offset,
+                @RequestHeader HttpHeaders headers,
+                HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, limit, offset);
                 String token = HttpUtils.getToken(headers);
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -80,12 +85,14 @@ public class QualityTaskController {
         @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json" })
         @Secured(roles = { "quality_task_r" }, level = ANY_ROLE)
         public ResponseEntity<SearchResponse<FlatQualityTask>> searchQualityTask(
-                        @RequestBody SearchRequestWithJoin request,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestBody SearchRequestWithJoin sr,
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, sr);
                 String token = HttpUtils.getToken(headers);
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-                SearchResponse<FlatQualityTask> res = qualityTaskService.searchQualityTask(request, userDetails);
+                SearchResponse<FlatQualityTask> res = qualityTaskService.searchQualityTask(sr, userDetails);
 
                 return new ResponseEntity<>(res, HttpStatus.OK);
         }
@@ -103,7 +110,9 @@ public class QualityTaskController {
         @Secured(roles = { "quality_task_r" }, level = ANY_ROLE)
         public ResponseEntity<List<QualityTask>> getQualityTasksByRunId(
                         @PathVariable("run_id") String runId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, runId);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -129,7 +138,9 @@ public class QualityTaskController {
         @Secured(roles = { "quality_task_r" }, level = ANY_ROLE)
         public ResponseEntity<List<QualityTaskAssertion>> getQualityTasksAssertionByRunId(
                         @PathVariable("run_id") String runId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, runId);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -154,7 +165,9 @@ public class QualityTaskController {
                         "application/json" })
         @Secured(roles = { "quality_task_r" }, level = ANY_ROLE)
         public ResponseEntity<List<QualityRuleTask>> getQualityRulesForSchedule(
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -178,7 +191,9 @@ public class QualityTaskController {
                         "application/json" })
         @Secured(roles = { "quality_task_r" }, level = ANY_ROLE)
         public ResponseEntity<List<QualityRuleTask>> getQualityRules(
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -194,7 +209,9 @@ public class QualityTaskController {
         @Secured(roles = { "quality_task_r" }, level = ALL_ROLES_STRICT)
         public ResponseEntity<?> createSystem(
                         @PathVariable("ruleId") String ruleId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, ruleId);
                 System.out.println("addQualityRuleTask = " + ruleId);
                 qualityTaskService.addQualityRuleTask(ruleId, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
                 return ResponseEntity.ok(null);
@@ -204,12 +221,14 @@ public class QualityTaskController {
         @RequestMapping(value = "/search_rules", method = RequestMethod.POST, produces = { "application/json" })
         @Secured(roles = { "quality_task_r" }, level = ANY_ROLE)
         public ResponseEntity<SearchResponse<FlatQualityRuleTask>> searchQualityRuleTasks(
-                        @RequestBody SearchRequestWithJoin request,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestBody SearchRequestWithJoin sr,
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, sr);
                 String token = HttpUtils.getToken(headers);
                 UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-                SearchResponse<FlatQualityRuleTask> res = qualityTaskService.searchQualityRuleTask(request,
+                SearchResponse<FlatQualityRuleTask> res = qualityTaskService.searchQualityRuleTask(sr,
                                 userDetails);
 
                 return new ResponseEntity<>(res, HttpStatus.OK);
@@ -222,7 +241,9 @@ public class QualityTaskController {
         @Secured(roles = { "quality_task_r" }, level = ANY_ROLE)
         public ResponseEntity<List<QualityTaskRun>> getQualityRuleRuns(
                         @PathVariable("rule_id") String ruleId,
-                        @RequestHeader HttpHeaders headers) throws LottabyteException {
+                        @RequestHeader HttpHeaders headers,
+                        HttpServletRequest request) throws LottabyteException {
+                apiLogService.logApiCall(request, ruleId);
                 String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ",
                                 "");
                 UserDetails userDetails = jwtHelper.getUserDetail(token);

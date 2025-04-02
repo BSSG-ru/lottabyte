@@ -994,7 +994,7 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                         .effectiveEndDate(dataAsset.getMetadata().getEffectiveEndDate())
                         .tags(Helper.getEmptyListIfNull(dataAsset.getMetadata().getTags()).stream()
                                         .map(x -> x.getName()).collect(Collectors.toList()))
-
+                        .relatedArtifacts(new ArrayList<>())
                         .systemId(dataAsset.getEntity().getSystemId())
                         .domainId(dataAsset.getEntity().getDomainId())
                         .entityId(dataAsset.getEntity().getEntityId())
@@ -1024,6 +1024,13 @@ public class DataAssetService extends WorkflowableService<DataAsset> {
                                 sa.setEntityName(ent.getName());
                 }
                 sa.setDomains(Collections.singletonList(dataAsset.getEntity().getDomainId()));
+
+                sa.addRelatedArtifact("system", dataAsset.getEntity().getSystemId());
+                sa.addRelatedArtifact("domain", dataAsset.getEntity().getDomainId());
+                sa.addRelatedArtifact("entity", dataAsset.getEntity().getEntityId());
+                if (dataAsset.getEntity().getDqRules() != null)
+                        sa.addRelatedArtifacts("dq_rule", dataAsset.getEntity().getDqRules().stream().map(ModeledObject::getId).collect(Collectors.toList()));
+
                 return sa;
         }
 

@@ -6,6 +6,7 @@ import lombok.EqualsAndHashCode;
 import ru.bssg.lottabyte.core.model.ca.CustomAttribute;
 import ru.bssg.lottabyte.core.model.search.SearchableArtifact;
 import ru.bssg.lottabyte.core.model.search.SearchableCustomAttribute;
+import ru.bssg.lottabyte.core.model.search.SearchableRelatedArtifact;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -24,8 +25,8 @@ public class SearchableDataEntity extends SearchableArtifact {
     protected String techName;
 
     @Builder
-    public SearchableDataEntity(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String entityFolderId, List<String> systemIds, List<String> systemNames, String businessEntityId, String businessEntityName, List<String> attributeNames, List<String> attributeDescriptions, String roles, String techName) {
-        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains);
+    public SearchableDataEntity(String id, Integer versionId, String name, String description, String shortDescription, List<String> tags, String modifiedBy, LocalDateTime modifiedAt, String artifactType, String artifactState, LocalDateTime effectiveStartDate, LocalDateTime effectiveEndDate, List<SearchableCustomAttribute> customAttributes, List<String> domains, String entityFolderId, List<String> systemIds, List<String> systemNames, String businessEntityId, String businessEntityName, List<String> attributeNames, List<String> attributeDescriptions, String roles, String techName, List<SearchableRelatedArtifact> relatedArtifacts) {
+        super(id, versionId, name, description, shortDescription, tags, modifiedBy, modifiedAt, artifactType, artifactState, effectiveStartDate, effectiveEndDate, customAttributes, domains, relatedArtifacts);
         this.entityFolderId = entityFolderId;
         this.systemIds = systemIds;
         this.systemNames = systemNames;

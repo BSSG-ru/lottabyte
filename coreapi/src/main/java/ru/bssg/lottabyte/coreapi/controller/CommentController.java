@@ -27,8 +27,10 @@ import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.CommentService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Objects;
 
@@ -49,6 +51,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class CommentController {
     private final CommentService commentService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -70,7 +73,9 @@ public class CommentController {
             @Parameter(description = "Artifact ID",
                        example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("artifact_id") String artifactId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -94,7 +99,9 @@ public class CommentController {
     @Secured(roles = {"comments_r", "comments_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<Comment> createComment(
             @RequestBody UpdatableComment comment,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, comment);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         return new ResponseEntity<>(commentService.createComment(comment, userDetails), HttpStatus.OK);
@@ -120,7 +127,9 @@ public class CommentController {
                        example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("comment_id") String commentId,
             @RequestBody UpdatableComment comment,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, comment, comment);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -146,7 +155,9 @@ public class CommentController {
             @Parameter(description = "Artifact ID of the Comment",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("comment_id") String commentId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, commentId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -157,12 +168,14 @@ public class CommentController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"comments_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatComment>> searchComment(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
         String token = HttpUtils.getToken(headers);
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
-        SearchResponse<FlatComment> res = commentService.searchComment(request, userDetails);
+        SearchResponse<FlatComment> res = commentService.searchComment(sr, userDetails);
 
         return new ResponseEntity<>(res, HttpStatus.OK);
     }

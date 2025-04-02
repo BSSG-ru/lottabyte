@@ -23,11 +23,13 @@ import ru.bssg.lottabyte.core.model.ca.CustomAttributeDefinition;
 import ru.bssg.lottabyte.core.model.ca.UpdatableCustomAttributeDefElementEntity;
 import ru.bssg.lottabyte.core.model.ca.UpdatableCustomAttributeDefinitionEntity;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.CustomAttributeDefinitionService;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Objects;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES_STRICT;
@@ -47,6 +49,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class CustomAttributeDefController {
     private final CustomAttributeDefinitionService customAttributeDefinitionService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -68,8 +71,9 @@ public class CustomAttributeDefController {
             @Parameter(description = "Artifact ID of the CustomAttributeDefinition",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("definition_id") String customAttributeDefinitionId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, customAttributeDefinitionId);
         return new ResponseEntity<>(customAttributeDefinitionService.getCustomAttributeDefinitionById(customAttributeDefinitionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -94,8 +98,9 @@ public class CustomAttributeDefController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset);
         return new ResponseEntity<>(customAttributeDefinitionService.getAllCustomAttributeDefinitionPaginated(offset, limit, null,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -123,8 +128,9 @@ public class CustomAttributeDefController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, artifactType, limit, offset);
         return new ResponseEntity<>(customAttributeDefinitionService.getAllCustomAttributeDefinitionPaginated(offset, limit, artifactType,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -146,8 +152,9 @@ public class CustomAttributeDefController {
     @Secured(roles = {"custom_attribute_r", "custom_attribute_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<CustomAttributeDefinition> createCustomAttributeDefinition(
             @RequestBody UpdatableCustomAttributeDefinitionEntity newCustomAttributeDefinitionEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, newCustomAttributeDefinitionEntity);
         return new ResponseEntity<>(customAttributeDefinitionService.createCustomAttributeDefinition(newCustomAttributeDefinitionEntity,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -172,8 +179,9 @@ public class CustomAttributeDefController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("definition_id") String customAttributeDefinitionId,
             @RequestBody UpdatableCustomAttributeDefinitionEntity customAttributeDefinitionEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, customAttributeDefinitionId, customAttributeDefinitionEntity);
         return new ResponseEntity<>(customAttributeDefinitionService.patchCustomAttributeDefinition(customAttributeDefinitionId,
                 customAttributeDefinitionEntity, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -197,8 +205,9 @@ public class CustomAttributeDefController {
             @Parameter(description = "Artifact ID of the Custom Attribute Definition",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("definition_id") String customAttributeDefinitionId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, customAttributeDefinitionId);
         return new ResponseEntity<>(customAttributeDefinitionService
                 .deleteCustomAttributeDefinition(customAttributeDefinitionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -222,8 +231,9 @@ public class CustomAttributeDefController {
             @Parameter(description = "Artifact ID of the CustomAttributeDefElement",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("defelement_id") String customAttributeDefElementId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, customAttributeDefElementId);
         return new ResponseEntity<>(customAttributeDefinitionService.getCustomAttributeDefElementById(customAttributeDefElementId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -251,8 +261,9 @@ public class CustomAttributeDefController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, definitionId, limit, offset);
         return new ResponseEntity<>(customAttributeDefinitionService.getAllCustomAttributeDefElementPaginated(offset, limit, definitionId,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -271,8 +282,9 @@ public class CustomAttributeDefController {
             @RequestParam(value="limit", defaultValue = "10") Integer limit,
             @Parameter(description = "Index of the beginning of the page. At present, the offset value can be 0 (zero) or a multiple of limit value.")
             @RequestParam(value="offset", defaultValue = "0") Integer offset,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, limit, offset);
         return new ResponseEntity<>(customAttributeDefinitionService.getAllCustomAttributeDefElementPaginated(offset, limit, null,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -294,8 +306,9 @@ public class CustomAttributeDefController {
     @Secured(roles = {"custom_attribute_r", "custom_attribute_u"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<CustomAttributeDefElement> createCustomAttributeDefElement(
             @RequestBody UpdatableCustomAttributeDefElementEntity newCustomAttributeDefElementEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, newCustomAttributeDefElementEntity);
         return new ResponseEntity<>(customAttributeDefinitionService.createCustomAttributeDefElement(newCustomAttributeDefElementEntity,
                 jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
@@ -320,8 +333,9 @@ public class CustomAttributeDefController {
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("defelement_id") String customAttributeDefElementId,
             @RequestBody UpdatableCustomAttributeDefElementEntity customAttributeDefElementEntity,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, customAttributeDefElementId, customAttributeDefElementEntity);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
 
         UserDetails userDetails = jwtHelper.getUserDetail(token);
@@ -347,8 +361,9 @@ public class CustomAttributeDefController {
             @Parameter(description = "Artifact ID of the CustomAttributeDefElement",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("defelement_id") String customAttributeDefElementId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers, HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, customAttributeDefElementId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         String tenantId = jwtHelper.getTenant(token);
         return new ResponseEntity<>(customAttributeDefinitionService.deleteCustomAttributeDefElement(customAttributeDefElementId,

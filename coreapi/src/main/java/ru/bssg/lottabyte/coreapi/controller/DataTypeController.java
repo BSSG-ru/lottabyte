@@ -24,8 +24,11 @@ import ru.bssg.lottabyte.core.ui.model.SearchResponse;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.BusinessEntityService;
 import ru.bssg.lottabyte.coreapi.service.DataTypeService;
+
+import javax.servlet.http.HttpServletRequest;
 
 import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 
@@ -43,6 +46,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 @RequiredArgsConstructor
 public class DataTypeController {
     private final DataTypeService dataTypeService;
+    private final APILogService apiLogService;
     private final JwtHelper jwtHelper;
 
     @Operation(
@@ -65,8 +69,9 @@ public class DataTypeController {
             @Parameter(description = "Artifact ID of the data type",
                     example = "aa0e33f5-3108-4d45-a530-0307458362d4")
             @PathVariable("datatype_id") String businessEntityDataTypeId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, businessEntityDataTypeId);
         return new ResponseEntity<>(dataTypeService.getDataTypeById(businessEntityDataTypeId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -74,9 +79,10 @@ public class DataTypeController {
     @RequestMapping(value = "/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"business_entity_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatDataType>> searchDataType(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        return new ResponseEntity<>(dataTypeService.searchDataType(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        return new ResponseEntity<>(dataTypeService.searchDataType(sr, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 }

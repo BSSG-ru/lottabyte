@@ -458,6 +458,15 @@ public enum Message {
     LBE05000("Domain is required", "Выберите домен", HttpStatus.BAD_REQUEST),
     LBE05001("JSON read error {0}", "Ошибка чтения JSON {0}", HttpStatus.BAD_REQUEST),
 
+    LBE04001("Artifact with id {0} not found", "Артефакт с идентификатором {0} не найден", HttpStatus.BAD_REQUEST),
+
+    LBE06401("ETL with id {0} not found", "Трансформация с идентификатором {0} не найдена", HttpStatus.NOT_FOUND),
+    LBE06402("ETL name can not be empty", "Название трансформации не может быть пустым", HttpStatus.BAD_REQUEST),
+    LBE06403("ETL already has Draft version with id {0}, please modify Draft version",
+            "Трансформация уже имеет черновую версию с идентификатором {0}, пожалуйста, измените черновую версию", HttpStatus.BAD_REQUEST),
+    LBE06404("ETL type can not be empty", "Тип трансформации не может быть пустым", HttpStatus.BAD_REQUEST),
+
+
     TASK_STATUS_FAILED("Failed", "Ошибка", HttpStatus.BAD_REQUEST),
     TASK_STATUS_FINISHED("Finished", "Выполнена", HttpStatus.BAD_REQUEST),
     TASK_STATUS_RUNNING("Running", "Выполняется", HttpStatus.BAD_REQUEST),

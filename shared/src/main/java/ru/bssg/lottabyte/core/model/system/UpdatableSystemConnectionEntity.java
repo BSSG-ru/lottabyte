@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.List;
 
@@ -16,6 +17,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper=false)
+@ToString(callSuper = true)
 public class UpdatableSystemConnectionEntity extends SystemConnectionEntity {
     protected List<SystemConnectionParamEntity> connectorParam;
 

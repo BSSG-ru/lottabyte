@@ -36,4 +36,8 @@ public class FlatProduct extends FlatModeledObject implements IFlatModeledObject
         this.entityQueryId = product.getEntity().getEntityQueryId();
         this.productIds = product.getEntity().getProductIds();
     }
+
+    public FlatProduct(FlatModeledObject fmo) {
+        super(fmo);
+    }
 }

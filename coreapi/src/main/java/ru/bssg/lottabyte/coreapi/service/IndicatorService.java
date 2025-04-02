@@ -976,6 +976,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         searchableIndicator.setModifiedBy(indicator.getMetadata().getModifiedBy());
         searchableIndicator.setModifiedAt(indicator.getMetadata().getModifiedAt());
         searchableIndicator.setArtifactType(indicator.getMetadata().getArtifactType());
+        searchableIndicator.setArtifactState(((WorkflowableMetadata)indicator.getMetadata()).getState().name());
         searchableIndicator.setEffectiveStartDate(indicator.getMetadata().getEffectiveStartDate());
         searchableIndicator.setEffectiveEndDate(indicator.getMetadata().getEffectiveEndDate());
         searchableIndicator.setTags(Helper.getEmptyListIfNull(indicator.getMetadata().getTags()).stream()
@@ -990,6 +991,7 @@ public class IndicatorService extends WorkflowableService<Indicator> {
         searchableIndicator.setLimits(indicator.getEntity().getLimits());
         searchableIndicator.setLimitsInternal(indicator.getEntity().getLimits_internal());
         searchableIndicator.setRoles(indicator.getEntity().getRoles());
+        searchableIndicator.setRelatedArtifacts(new ArrayList<>());
 
         if (indicator.getEntity().getDomainId() != null && !indicator.getEntity().getDomainId().isEmpty()) {
             Domain d = domainRepository.getById(indicator.getEntity().getDomainId(), userDetails);
@@ -1008,6 +1010,14 @@ public class IndicatorService extends WorkflowableService<Indicator> {
             if (dt != null)
                 searchableIndicator.setDataTypeName(dt.getName());
         }
+
+        searchableIndicator.addRelatedArtifact("domain", indicator.getEntity().getDomainId());
+        searchableIndicator.addRelatedArtifact("indicator_type", indicator.getEntity().getIndicatorTypeId());
+        searchableIndicator.addRelatedArtifacts("data_asset", indicator.getEntity().getDataAssetIds());
+        searchableIndicator.addRelatedArtifacts("business_entity", indicator.getEntity().getTermLinkIds());
+        if (indicator.getEntity().getDqRules() != null)
+            searchableIndicator.addRelatedArtifacts("dq_rule", indicator.getEntity().getDqRules().stream().map(ModeledObject::getId).collect(Collectors.toList()));
+
         return searchableIndicator;
     }
 

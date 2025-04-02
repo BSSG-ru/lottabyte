@@ -438,6 +438,7 @@ public class DQRuleService extends WorkflowableService<DQRule> {
             if (it != null)
                 sa.setRuleTypeName(it.getName());
         }
+        sa.setRelatedArtifacts(new ArrayList<>());
 
         return sa;
     }

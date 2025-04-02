@@ -37,6 +37,8 @@ public class RejectArtifactService implements JavaDelegate {
     private EntityQueryService entityQueryService;
     @Autowired
     private DQRuleService dqRuleService;
+    @Autowired
+    private ETLService etlService;
 
     public void execute(DelegateExecution execution) {
         log.info("RejectArtifactService called");
@@ -45,7 +47,7 @@ public class RejectArtifactService implements JavaDelegate {
         ArtifactType artifactType = ArtifactType.fromString((String) execution.getVariable("artifact_type"));
         ArtifactType[] entities = { ArtifactType.domain, ArtifactType.entity, ArtifactType.business_entity,
                 ArtifactType.product, ArtifactType.indicator, ArtifactType.data_asset, ArtifactType.system,
-                ArtifactType.entity_query, ArtifactType.dq_rule };
+                ArtifactType.entity_query, ArtifactType.dq_rule, ArtifactType.etl };
         if (Arrays.asList(entities).contains(artifactType)) {
             UserDetails ud = new UserDetails();
             ud.setUid((String) execution.getVariable("ud_uid"));
@@ -80,6 +82,9 @@ public class RejectArtifactService implements JavaDelegate {
                         break;
                     case dq_rule:
                         dqRuleService.wfCancel(artifactId, ud);
+                        break;
+                    case etl:
+                        etlService.wfCancel(artifactId, ud);
                         break;
                 }
 

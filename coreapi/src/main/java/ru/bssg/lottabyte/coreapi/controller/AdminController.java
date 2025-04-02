@@ -24,8 +24,10 @@ import ru.bssg.lottabyte.core.model.tenant.TenantValue;
 import ru.bssg.lottabyte.core.usermanagement.model.UserDetails;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.AdminService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.util.Objects;
 
@@ -46,6 +48,7 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ALL_ROLES
 public class AdminController {
     private final AdminService adminService;
     private final JwtHelper jwtHelper;
+    private final APILogService apiLogService;
     @Value("${system.data.storage}")
     private String DATA_STORAGE;
 
@@ -66,8 +69,10 @@ public class AdminController {
     @Secured(roles = {"global_admin"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<Tenant> createTenant(
             @RequestBody TenantValue tenantValue,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, tenantValue);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
 
@@ -91,8 +96,10 @@ public class AdminController {
     @Secured(roles = {"global_admin"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<BackupRun> deleteTenant(
             @PathVariable("tenant_id") Integer tenantId,
-            @RequestHeader HttpHeaders headers
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, tenantId);
         String token = Objects.requireNonNull(headers.getFirst(HttpHeaders.AUTHORIZATION)).replace("Bearer ","");
         UserDetails userDetails = jwtHelper.getUserDetail(token);
         String tenantName = "da_" + tenantId;
@@ -126,8 +133,9 @@ public class AdminController {
 //    @Secured(roles = {"global_admin"}, level = ALL_ROLES_STRICT)
     public ResponseEntity<BackupRun> createBackupForDB(
             @PathVariable("tenant_id") Integer tenantId,
-            @RequestHeader HttpHeaders headers
+            HttpServletRequest request
     ) throws LottabyteException {
+        apiLogService.logApiCall(request, tenantId);
         String tenantName = "da_" + tenantId;
         String path = DATA_STORAGE + "/" + tenantName + ".zip";
         BackupRun backupRun = adminService.createBackupRunBeforeRequest(tenantId, path);

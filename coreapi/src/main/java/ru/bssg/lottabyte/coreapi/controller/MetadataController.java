@@ -22,8 +22,10 @@ import ru.bssg.lottabyte.core.ui.model.SearchResponse;
 import ru.bssg.lottabyte.core.usermanagement.security.JwtHelper;
 import ru.bssg.lottabyte.core.usermanagement.security.annotation.Secured;
 import ru.bssg.lottabyte.core.util.HttpUtils;
+import ru.bssg.lottabyte.coreapi.service.APILogService;
 import ru.bssg.lottabyte.coreapi.service.MetadataService;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,15 +47,17 @@ import static ru.bssg.lottabyte.core.usermanagement.util.SecurityLevel.ANY_ROLE;
 public class MetadataController {
     private final JwtHelper jwtHelper;
     private final MetadataService metadataService;
+    private final APILogService apiLogService;
 
     @Hidden
     @RequestMapping(value = "/db/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"metadata_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatMetaDatabase>> searchMetaDatabases(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        return new ResponseEntity<>(metadataService.searchMetaDatabases(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        return new ResponseEntity<>(metadataService.searchMetaDatabases(sr, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
     @Hidden
@@ -61,8 +65,9 @@ public class MetadataController {
     @Secured(roles = {"metadata_r"}, level = ANY_ROLE)
     public ResponseEntity<FlatMetaDatabase> getDatabase(
             @PathVariable("id") UUID id,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, id);
         return new ResponseEntity<>(metadataService.getMetaDatabaseById(id, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -72,8 +77,9 @@ public class MetadataController {
     public ResponseEntity<FlatMetaDatabase> getDatabaseVersion(
             @PathVariable("id") UUID id,
             @PathVariable("version_id") Integer versionId,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, id, versionId);
         return new ResponseEntity<>(metadataService.getMetaDatabaseVersionById(id, versionId, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -81,20 +87,22 @@ public class MetadataController {
     @RequestMapping(value = "/object/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"metadata_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatMetaObject>> searchMetaObjects(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        return new ResponseEntity<>(metadataService.searchMetaObjects(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        return new ResponseEntity<>(metadataService.searchMetaObjects(sr, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
     @Hidden
     @RequestMapping(value = "/column/search", method = RequestMethod.POST, produces = { "application/json"})
     @Secured(roles = {"metadata_r"}, level = ANY_ROLE)
     public ResponseEntity<SearchResponse<FlatMetaColumn>> searchMetaColumns(
-            @RequestBody SearchRequestWithJoin request,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
-        return new ResponseEntity<>(metadataService.searchMetaColumns(request, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
+            @RequestBody SearchRequestWithJoin sr,
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, sr);
+        return new ResponseEntity<>(metadataService.searchMetaColumns(sr, jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
     @Hidden
@@ -102,8 +110,9 @@ public class MetadataController {
     @Secured(roles = {"metadata_r"}, level = ANY_ROLE)
     public ResponseEntity<List<FlatMetaDatabase>> getDatabaseVersions(
             @PathVariable("id") UUID id,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, id);
         return new ResponseEntity<>(metadataService.getMetaDatabaseVersions(id.toString(), jwtHelper.getUserDetail(HttpUtils.getToken(headers))), HttpStatus.OK);
     }
 
@@ -113,8 +122,9 @@ public class MetadataController {
     public ResponseEntity<FlatMetaDatabase> patchMetaDatabase(
             @PathVariable("id") UUID id,
             @RequestBody FlatMetaDatabase fmb,
-            @RequestHeader HttpHeaders headers) throws LottabyteException {
-
+            @RequestHeader HttpHeaders headers,
+            HttpServletRequest request) throws LottabyteException {
+        apiLogService.logApiCall(request, id, fmb);
         FlatMetaDatabase res = metadataService.updateMetaDatabase(fmb, jwtHelper.getUserDetail(HttpUtils.getToken(headers)));
         return new ResponseEntity<>(res, HttpStatus.OK);
     }

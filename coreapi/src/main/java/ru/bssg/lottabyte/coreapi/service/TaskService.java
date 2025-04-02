@@ -234,8 +234,12 @@ public class TaskService {
         sa.setEffectiveEndDate(task.getMetadata().getEffectiveEndDate());
         sa.setTags(Helper.getEmptyListIfNull(task.getMetadata().getTags()).stream()
                 .map(x -> x.getName()).collect(Collectors.toList()));
+        sa.setRelatedArtifacts(new ArrayList<>());
 
         sa.setDomains(taskRepository.getDomainIdsByTaskId(task.getId(), userDetails));
+
+        sa.addRelatedArtifact("system_connection", task.getEntity().getSystemConnectionId());
+        sa.addRelatedArtifact("entity_query", task.getEntity().getQueryId());
 
         return sa;
     }

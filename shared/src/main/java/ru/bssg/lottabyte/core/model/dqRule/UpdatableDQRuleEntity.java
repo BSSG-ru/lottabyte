@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import ru.bssg.lottabyte.core.api.LottabyteException;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -13,6 +14,7 @@ import ru.bssg.lottabyte.core.api.LottabyteException;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true)
 public class UpdatableDQRuleEntity extends DQRuleEntity {
 
     public UpdatableDQRuleEntity(DQRuleEntity fromCopy) throws LottabyteException {
